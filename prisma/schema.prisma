@@ -135,6 +135,24 @@ model Customer {
   @@map("customers")
 }
 
+// NOVO: Modelo para clientes que fazem login no sistema público
+model Client {
+  id        String    @id @default(uuid())
+  name      String
+  email     String    @unique
+  phone     String
+  password  String
+  avatar    String?
+  birthDate DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  appointments Appointment[]
+  
+  @@map("clients")
+}
+
 model Appointment {
   id        String   @id @default(uuid())
   date      DateTime
@@ -147,8 +165,13 @@ model Appointment {
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id])
   barbershopId String
 
-  customer   Customer @relation(fields: [customerId], references: [id])
-  customerId String
+  // Relacionamento com Customer (clientes cadastrados pela barbearia)
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  customerId String?
+
+  // NOVO: Relacionamento com Client (clientes do sistema público)
+  client     Client?   @relation(fields: [clientId], references: [id])
+  clientId   String?
 
   barber   User @relation(fields: [barberId], references: [id])
   barberId String

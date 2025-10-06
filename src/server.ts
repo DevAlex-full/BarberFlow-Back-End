@@ -12,6 +12,9 @@ import dashboardRoutes from './routes/dashboard.routes';
 import subscriptionRoutes from './routes/subscription.routes';
 import uploadRoutes from './routes/upload.routes';
 import paymentRoutes from './routes/payment.routes';
+import publicBarbershopRoutes from './routes/public-barbershop.routes';
+import clientAuthRoutes from './routes/client-auth.routes';
+import clientAppointmentRoutes from './routes/client-appointment.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -43,6 +46,9 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/public', publicBarbershopRoutes);
+app.use('/api/client/auth', clientAuthRoutes);
+app.use('/api/client/appointments', clientAppointmentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
