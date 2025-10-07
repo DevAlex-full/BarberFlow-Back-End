@@ -194,4 +194,36 @@ router.patch('/:id/cancel', clientAuthMiddleware, async (req, res) => {
   }
 });
 
+// 🧪 Rota para testar lembretes manualmente (apenas desenvolvimento)
+if (process.env.NODE_ENV === 'development') {
+  router.get('/test-reminders', async (req, res) => {
+    try {
+      console.log('\n🧪 ========== TESTE DE LEMBRETES ==========');
+      console.log(`⏰ Hora: ${new Date().toLocaleString('pt-BR')}\n`);
+      
+      const { sendAutomaticReminders } = await import('../jobs/reminder.job');
+      const result = await sendAutomaticReminders();
+      
+      console.log('\n✅ ========== TESTE CONCLUÍDO ==========\n');
+      
+      return res.json({
+        success: true,
+        message: 'Teste de lembretes executado com sucesso',
+        timestamp: new Date().toISOString(),
+        result
+      });
+    } catch (error) {
+      console.error('\n❌ ========== ERRO NO TESTE ==========');
+      console.error(error);
+      console.log('\n');
+      
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao executar teste de lembretes',
+        message: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+    }
+  });
+}
+
 export default router;
