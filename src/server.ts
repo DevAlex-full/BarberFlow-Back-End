@@ -15,6 +15,7 @@ import paymentRoutes from './routes/payment.routes';
 import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
+import { startCronJobs } from './jobs';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -22,7 +23,7 @@ dotenv.config();
 console.log('🔵 Porta configurada:', process.env.PORT);
 
 const app = express();
-const PORT = process.env.PORT || 3333;
+const PORT = process.env.PORT || 4000;
 
 // Middlewares
 app.use(cors({
@@ -68,12 +69,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-import { startReminderJob } from './jobs/reminder.job';
-
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📍 http://localhost:${PORT}`);
+  console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}\n`);
   
-  // Iniciar job de lembretes automáticos
-  startReminderJob();
+  // Iniciar sistema de tarefas automáticas (cron jobs)
+  startCronJobs();
 });
+
+export default app;
