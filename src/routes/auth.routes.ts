@@ -12,7 +12,6 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password, phone, barbershopName, barbershopPhone } = req.body;
 
-    // Verificar se o email já existe
     const userExists = await prisma.user.findUnique({
       where: { email }
     });
@@ -21,12 +20,10 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
-    // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Criar barbearia e usuário
     const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 30); // 30 dias de trial
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
 
     const barbershop = await prisma.barbershop.create({
       data: {
@@ -52,7 +49,6 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    // Gerar token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, barbershopId: barbershop.id },
       process.env.JWT_SECRET!,
@@ -138,16 +134,8 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      include: { barbershop: true },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        avatar: true,
-        barbershopId: true,
-        barbershop: true
+      include: { 
+        barbershop: true 
       }
     });
 
@@ -155,7 +143,9 @@ router.get('/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    return res.json(user);
+    const { password, ...userWithoutPassword } = user;
+
+    return res.json(userWithoutPassword);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Erro ao buscar usuário' });
