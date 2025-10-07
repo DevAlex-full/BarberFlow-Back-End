@@ -8,6 +8,106 @@ import { ptBR } from 'date-fns/locale';
 const router = Router();
 const prisma = new PrismaClient();
 
+// ========== ROTAS GET (devem vir ANTES das rotas POST) ==========
+
+// Listar agendamentos do cliente
+router.get('/my-appointments', clientAuthMiddleware, async (req, res) => {
+  try {
+    const { status } = req.query;
+
+    const where: any = {
+      clientId: req.client!.id,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where,
+      include: {
+        barbershop: {
+          select: {
+            name: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            logo: true,
+          },
+        },
+        barber: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+        service: {
+          select: {
+            name: true,
+            price: true,
+            duration: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    return res.json(appointments);
+  } catch (error) {
+    console.error('Erro ao buscar agendamentos:', error);
+    return res.status(500).json({ error: 'Erro ao buscar agendamentos' });
+  }
+});
+
+// Buscar detalhes de um agendamento específico
+router.get('/:id', clientAuthMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const appointment = await prisma.appointment.findUnique({
+      where: { id },
+      include: {
+        barbershop: {
+          select: {
+            name: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            logo: true,
+          },
+        },
+        barber: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+        service: {
+          select: {
+            name: true,
+            description: true,
+            price: true,
+            duration: true,
+          },
+        },
+      },
+    });
+
+    if (!appointment || appointment.clientId !== req.client!.id) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    return res.json(appointment);
+  } catch (error) {
+    console.error('Erro ao buscar agendamento:', error);
+    return res.status(500).json({ error: 'Erro ao buscar agendamento' });
+  }
+});
+
+// ========== ROTAS POST/PATCH ==========
+
 // Criar agendamento (cliente autenticado)
 router.post('/', clientAuthMiddleware, async (req, res) => {
   try {
@@ -112,7 +212,6 @@ router.post('/', clientAuthMiddleware, async (req, res) => {
         });
       } catch (emailError) {
         console.error('Erro ao enviar email de confirmação:', emailError);
-        // Não falhar o agendamento se o email falhar
       }
     }
 
@@ -122,8 +221,6 @@ router.post('/', clientAuthMiddleware, async (req, res) => {
     return res.status(500).json({ error: 'Erro ao criar agendamento' });
   }
 });
-
-// ... (outras rotas permanecem iguais até o cancelamento)
 
 // Cancelar agendamento
 router.patch('/:id/cancel', clientAuthMiddleware, async (req, res) => {
@@ -194,7 +291,7 @@ router.patch('/:id/cancel', clientAuthMiddleware, async (req, res) => {
   }
 });
 
-// 🧪 Rota para testar lembretes manualmente (apenas desenvolvimento)
+// Rota de teste (apenas desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
   router.get('/test-reminders', async (req, res) => {
     try {
