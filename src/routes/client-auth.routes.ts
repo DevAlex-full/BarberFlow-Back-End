@@ -69,6 +69,8 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('🔐 Tentativa de login:', { email }); // LOG
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email e senha são obrigatórios' });
     }
@@ -77,6 +79,8 @@ router.post('/login', async (req, res) => {
     const client = await prisma.client.findUnique({
       where: { email },
     });
+
+    console.log('👤 Cliente encontrado:', client ? 'SIM' : 'NÃO'); // LOG
 
     if (!client) {
       return res.status(401).json({ error: 'Email ou senha inválidos' });
@@ -88,6 +92,8 @@ router.post('/login', async (req, res) => {
 
     // Verificar senha
     const validPassword = await bcrypt.compare(password, client.password);
+
+    console.log('🔑 Senha válida:', validPassword ? 'SIM' : 'NÃO'); // LOG
 
     if (!validPassword) {
       return res.status(401).json({ error: 'Email ou senha inválidos' });
@@ -103,9 +109,11 @@ router.post('/login', async (req, res) => {
     // Remover senha do retorno
     const { password: _, ...clientData } = client;
 
+    console.log('✅ Login bem-sucedido:', client.email); // LOG
+
     return res.json({ client: clientData, token });
   } catch (error) {
-    console.error('Erro ao fazer login:', error);
+    console.error('❌ Erro ao fazer login:', error);
     return res.status(500).json({ error: 'Erro ao fazer login' });
   }
 });
