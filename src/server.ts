@@ -25,11 +25,36 @@ console.log('🔵 Porta configurada:', process.env.PORT);
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middlewares
+// CORS - Permitir múltiplas origens
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://barbeflow-frontend.vercel.app',
+  'https://barberflow-frontend.vercel.app',
+  process.env.FRONTEND_URL,
+].filter(Boolean); // Remove valores undefined
+
+console.log('🌐 Origens permitidas (CORS):', allowedOrigins);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (mobile apps, Postman, curl, etc)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('❌ Origem bloqueada por CORS:', origin);
+      callback(new Error('Origem não permitida pela política de CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 600 // Cache de preflight por 10 minutos
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -53,7 +78,12 @@ app.use('/api/client/appointments', clientAppointmentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'BarberFlow API está rodando!' });
+  res.json({ 
+    status: 'OK', 
+    message: 'BarberFlow API está rodando!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // 404 handler
@@ -63,7 +93,7 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  console.error('❌ Erro:', err.stack);
   res.status(err.status || 500).json({
     error: err.message || 'Erro interno do servidor'
   });
@@ -71,7 +101,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 app.listen(PORT, () => {
   console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📍 http://localhost:${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}\n`);
   
   // Iniciar sistema de tarefas automáticas (cron jobs)
