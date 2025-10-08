@@ -25,20 +25,19 @@ console.log('🔵 Porta configurada:', process.env.PORT);
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// CORS - Permitir múltiplas origens
+// ✅ CORS - Origens corrigidas com HTTPS
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'http://barberflowoficial.vercel.app',
-  'http://barberflowoficial.vercel.app',
+  'https://barberflowoficial.vercel.app', // ✅ CORRIGIDO: HTTPS
   process.env.FRONTEND_URL,
-].filter(Boolean); // Remove valores undefined
+].filter(Boolean);
 
 console.log('🌐 Origens permitidas (CORS):', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir requisições sem origin (mobile apps, Postman, curl, etc)
+    // Permitir requisições sem origin (mobile apps, Postman, etc)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
@@ -52,13 +51,13 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 600 // Cache de preflight por 10 minutos
+  maxAge: 600
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos da pasta uploads
+// Servir arquivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Routes
@@ -104,7 +103,6 @@ app.listen(PORT, () => {
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}\n`);
   
-  // Iniciar sistema de tarefas automáticas (cron jobs)
   startCronJobs();
 });
 
