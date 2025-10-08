@@ -29,8 +29,8 @@ const PORT = process.env.PORT || 4000;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://barbeflow-frontend.vercel.app',
-  'https://barberflow-frontend.vercel.app',
+  'https://barberflowoficial.vercel.app',
+  'https://barberflowoficial.vercel.app',
   process.env.FRONTEND_URL,
 ].filter(Boolean); // Remove valores undefined
 
