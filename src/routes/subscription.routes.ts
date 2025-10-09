@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middlewares/auth.middleware';
-import { PLANS } from '../config/plans';
+import { PLANS, canChangeToPlan } from '../config/plans';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -9,6 +9,7 @@ const prisma = new PrismaClient();
 // Listar planos disponíveis
 router.get('/plans', async (req, res) => {
   try {
+    // ✅ RETORNAR TODOS OS PLANOS INCLUINDO O NOVO 'STANDARD'
     return res.json(PLANS);
   } catch (error) {
     console.error(error);
@@ -63,7 +64,7 @@ router.get('/current', authMiddleware, async (req, res) => {
       limits: currentPlan?.features || {},
       trial: {
         isInTrial,
-        daysLeft: trialDaysLeft,
+        daysLeft: Math.max(0, trialDaysLeft),
         endsAt: barbershop.trialEndsAt
       }
     });
@@ -73,10 +74,10 @@ router.get('/current', authMiddleware, async (req, res) => {
   }
 });
 
-// Criar/Atualizar assinatura (upgrade/downgrade)
+// ✅ CRIAR/ATUALIZAR ASSINATURA ATUALIZADO
 router.post('/subscribe', authMiddleware, async (req, res) => {
   try {
-    const { planId, paymentMethod } = req.body;
+    const { planId, paymentMethod, period = 'monthly' } = req.body;
 
     if (!PLANS[planId as keyof typeof PLANS]) {
       return res.status(400).json({ error: 'Plano inválido' });
@@ -99,17 +100,16 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Barbearia não encontrada' });
     }
 
-    // Validar se o plano comporta os dados atuais
-    if (plan.features.maxBarbers !== -1 && barbershop._count.users > plan.features.maxBarbers) {
-      return res.status(400).json({ 
-        error: `Este plano suporta apenas ${plan.features.maxBarbers} barbeiro(s). Você tem ${barbershop._count.users}.` 
-      });
-    }
+    // ✅ USAR NOVA FUNÇÃO DE VALIDAÇÃO
+    const validation = canChangeToPlan(
+      barbershop.plan, 
+      planId, 
+      barbershop._count.users, 
+      barbershop._count.customers
+    );
 
-    if (plan.features.maxCustomers !== -1 && barbershop._count.customers > plan.features.maxCustomers) {
-      return res.status(400).json({ 
-        error: `Este plano suporta apenas ${plan.features.maxCustomers} clientes. Você tem ${barbershop._count.customers}.` 
-      });
+    if (!validation.canChange) {
+      return res.status(400).json({ error: validation.reason });
     }
 
     // Cancelar assinatura anterior se existir
@@ -124,24 +124,43 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
       }
     });
 
-    // Criar nova assinatura
+    // ✅ CALCULAR DATAS COM BASE NO PERÍODO
     const currentPeriodStart = new Date();
     const currentPeriodEnd = new Date();
-    currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+    
+    if (period === 'monthly') {
+      currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+    } else if (period === 'semiannual') {
+      currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 6);
+    } else if (period === 'annual') {
+      currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
+    }
 
+    // ✅ CALCULAR VALOR COM BASE NO PERÍODO
+    let amount = plan.price;
+    if (period === 'semiannual') {
+      amount = plan.price * 6 * 0.85; // 15% desconto
+    } else if (period === 'annual') {
+      amount = plan.yearlyPrice || (plan.price * 12 * 0.70); // 30% desconto
+    }
+
+    // Criar nova assinatura
     const subscription = await prisma.subscription.create({
       data: {
         barbershopId,
         plan: planId,
         status: 'active',
-        amount: plan.price,
+        amount: amount,
         paymentMethod: paymentMethod || 'pending',
         currentPeriodStart,
         currentPeriodEnd
       }
     });
 
-    // Atualizar barbearia
+    // ✅ ATUALIZAR LIMITES DA BARBEARIA
+    const maxBarbers = plan.features.maxBarbers === -1 ? 999 : plan.features.maxBarbers;
+    const maxCustomers = plan.features.maxCustomers === -1 ? 999999 : plan.features.maxCustomers;
+
     await prisma.barbershop.update({
       where: { id: barbershopId },
       data: {
@@ -149,8 +168,8 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
         planStatus: 'active',
         planStartedAt: new Date(),
         planExpiresAt: currentPeriodEnd,
-        maxBarbers: plan.features.maxBarbers,
-        maxCustomers: plan.features.maxCustomers
+        maxBarbers: maxBarbers,
+        maxCustomers: maxCustomers
       }
     });
 
@@ -158,7 +177,7 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
     await prisma.payment.create({
       data: {
         subscriptionId: subscription.id,
-        amount: plan.price,
+        amount: amount,
         status: 'pending',
         paymentMethod: paymentMethod || 'pending'
       }
@@ -170,7 +189,9 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
       plan: {
         id: planId,
         name: plan.name,
-        price: plan.price
+        price: plan.price,
+        period: period,
+        amount: amount
       }
     });
   } catch (error) {
@@ -185,7 +206,7 @@ router.post('/cancel', authMiddleware, async (req, res) => {
     const barbershopId = req.user!.barbershopId!;
 
     // Cancelar assinatura ativa
-    await prisma.subscription.updateMany({
+    const cancelledSubscriptions = await prisma.subscription.updateMany({
       where: {
         barbershopId,
         status: 'active'
@@ -196,6 +217,10 @@ router.post('/cancel', authMiddleware, async (req, res) => {
       }
     });
 
+    if (cancelledSubscriptions.count === 0) {
+      return res.status(404).json({ error: 'Nenhuma assinatura ativa encontrada' });
+    }
+
     // Mover barbearia para trial expirado (ainda pode usar até acabar o período)
     await prisma.barbershop.update({
       where: { id: barbershopId },
@@ -205,11 +230,52 @@ router.post('/cancel', authMiddleware, async (req, res) => {
     });
 
     return res.json({
-      message: 'Assinatura cancelada. Você pode usar até o fim do período pago.'
+      message: 'Assinatura cancelada com sucesso! Você pode usar até o fim do período pago.'
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Erro ao cancelar assinatura' });
+  }
+});
+
+// ✅ NOVO: Validar se pode mudar para um plano
+router.post('/validate-change', authMiddleware, async (req, res) => {
+  try {
+    const { targetPlan } = req.body;
+    const barbershopId = req.user!.barbershopId!;
+
+    const barbershop = await prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: {
+        _count: {
+          select: { users: true, customers: true }
+        }
+      }
+    });
+
+    if (!barbershop) {
+      return res.status(404).json({ error: 'Barbearia não encontrada' });
+    }
+
+    const validation = canChangeToPlan(
+      barbershop.plan,
+      targetPlan,
+      barbershop._count.users,
+      barbershop._count.customers
+    );
+
+    return res.json({
+      canChange: validation.canChange,
+      reason: validation.reason,
+      currentUsage: {
+        barbers: barbershop._count.users,
+        customers: barbershop._count.customers
+      },
+      targetLimits: PLANS[targetPlan as keyof typeof PLANS]?.features
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Erro ao validar mudança de plano' });
   }
 });
 
