@@ -141,7 +141,7 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
     if (period === 'semiannual') {
       amount = plan.price * 6 * 0.85; // 15% desconto
     } else if (period === 'annual') {
-      amount = plan.yearlyPrice || (plan.price * 12 * 0.70); // 30% desconto
+      amount = plan.price * 12 * 0.70; // 30% desconto
     }
 
     // Criar nova assinatura
