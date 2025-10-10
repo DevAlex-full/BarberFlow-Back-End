@@ -3,31 +3,40 @@ import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { preference } from '../config/mercadopago';
 import { PLANS } from '../config/plans';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { sendPaymentConfirmationEmail } from '../services/email.service';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// Cliente Mercado Pago para buscar pagamentos
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN!,
+  options: { timeout: 5000 }
+});
+const paymentClient = new Payment(mpClient);
 
 // ✅ VALORES ATUALIZADOS DOS PLANOS
 const PLAN_PRICES: Record<string, { monthly: number; semiannual: number; annual: number }> = {
   basic: {
     monthly: 34.90,
-    semiannual: 177.99, // 34.90 * 6 * 0.85 (15% desconto)
-    annual: 418.80 // 30% desconto
+    semiannual: 177.99,
+    annual: 418.80
   },
   standard: {
     monthly: 48.90,
-    semiannual: 249.51, // 48.90 * 6 * 0.85 (15% desconto)
-    annual: 586.80 // 30% desconto
+    semiannual: 249.51,
+    annual: 586.80
   },
   premium: {
     monthly: 75.60,
-    semiannual: 385.56, // 75.60 * 6 * 0.85 (15% desconto)
-    annual: 907.20 // 30% desconto
+    semiannual: 385.56,
+    annual: 907.20
   },
   enterprise: {
     monthly: 102.80,
-    semiannual: 524.28, // 102.80 * 6 * 0.85 (15% desconto)
-    annual: 1233.60 // 30% desconto
+    semiannual: 524.28,
+    annual: 1233.60
   }
 };
 
@@ -53,17 +62,14 @@ router.post('/create-preference', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Barbearia não encontrada' });
     }
 
-    // ✅ CALCULAR PREÇO COM BASE NO PERÍODO
-    const price = PLAN_PRICES[plan][period as keyof typeof PLAN_PRICES[typeof plan]];
+    const price = PLAN_PRICES[plan][period as 'monthly' | 'semiannual' | 'annual'];
     const planConfig = PLANS[plan as keyof typeof PLANS];
     
-    // ✅ CALCULAR DESCONTO
     let discountPercentage = 0;
     if (period === 'semiannual') discountPercentage = 15;
     if (period === 'annual') discountPercentage = 30;
 
-    // ✅ NOME DO PLANO COM PERÍODO
-    const periodNames = {
+    const periodNames: Record<string, string> = {
       monthly: 'Mensal',
       semiannual: 'Semestral',
       annual: 'Anual'
@@ -72,11 +78,11 @@ router.post('/create-preference', authMiddleware, async (req, res) => {
     const preferenceData: any = {
       items: [
         {
-          title: `${planConfig.name} - ${periodNames[period as keyof typeof periodNames]}`,
-          description: `Assinatura ${periodNames[period as keyof typeof periodNames]} do ${planConfig.name}${discountPercentage > 0 ? ` (${discountPercentage}% OFF)` : ''}`,
+          title: `${planConfig.name} - ${periodNames[period]}`,
+          description: `BarberFlow - ${planConfig.description}${discountPercentage > 0 ? ` (${discountPercentage}% OFF)` : ''}`,
           quantity: 1,
           currency_id: 'BRL',
-          unit_price: Number(price.toFixed(2)) // ✅ GARANTIR 2 casas decimais
+          unit_price: price
         }
       ],
       back_urls: {
@@ -87,15 +93,25 @@ router.post('/create-preference', authMiddleware, async (req, res) => {
       auto_return: 'approved',
       metadata: {
         barbershop_id: barbershop.id,
+        barbershop_name: barbershop.name,
+        barbershop_email: barbershop.email,
         user_id: user.id,
         plan: plan,
         period: period,
-        price: price
+        price: price.toString(),
+        discount: discountPercentage.toString()
       },
-      notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`
+      notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
+      statement_descriptor: 'BARBERFLOW',
+      external_reference: `${barbershop.id}-${plan}-${Date.now()}`
     };
 
-    console.log('📦 Criando preferência:', JSON.stringify(preferenceData, null, 2));
+    console.log('📦 Criando preferência Mercado Pago:', {
+      barbershop: barbershop.name,
+      plan: plan,
+      period: period,
+      price: price
+    });
 
     const response = await preference.create({ body: preferenceData });
 
@@ -112,78 +128,129 @@ router.post('/create-preference', authMiddleware, async (req, res) => {
         discount: discountPercentage
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Erro ao criar preferência:', error);
-    return res.status(500).json({ error: 'Erro ao criar preferência de pagamento' });
+    return res.status(500).json({ 
+      error: 'Erro ao criar preferência de pagamento',
+      details: error.message 
+    });
   }
 });
 
-// ✅ WEBHOOK PARA PROCESSAR PAGAMENTOS
+// ✅ WEBHOOK DO MERCADO PAGO (PRINCIPAL)
 router.post('/webhook', async (req, res) => {
   try {
-    const { type, data, action } = req.body;
+    console.log('🔔 Webhook recebido do Mercado Pago');
+    console.log('📋 Headers:', req.headers);
+    console.log('📦 Body:', JSON.stringify(req.body, null, 2));
 
-    console.log('🔔 Webhook recebido:', JSON.stringify({ type, action, data }, null, 2));
+    const { type, action, data } = req.body;
 
-    if (type === 'payment') {
-      const paymentId = data.id;
-      
-      console.log('💳 Pagamento ID recebido:', paymentId);
+    // Responder imediatamente para o MP
+    res.status(200).send('OK');
 
-      // ⚠️ IMPORTANTE: Você deve implementar a busca real no Mercado Pago
-      // Descomente o código abaixo quando tiver o SDK instalado:
-      
-      /*
-      import { MercadoPagoConfig, Payment } from 'mercadopago';
-      
-      const client = new MercadoPagoConfig({ 
-        accessToken: process.env.MP_ACCESS_TOKEN! 
+    // Processar apenas notificações de pagamento
+    if (type === 'payment' || action === 'payment.created' || action === 'payment.updated') {
+      const paymentId = data?.id;
+
+      if (!paymentId) {
+        console.log('⚠️ Webhook sem ID de pagamento');
+        return;
+      }
+
+      console.log(`💳 Processando pagamento ID: ${paymentId}`);
+
+      // Aguardar um pouco antes de buscar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Buscar detalhes do pagamento no Mercado Pago
+      const payment = await paymentClient.get({ id: paymentId });
+
+      console.log('💰 Detalhes do pagamento:', {
+        id: payment.id,
+        status: payment.status,
+        status_detail: payment.status_detail,
+        transaction_amount: payment.transaction_amount,
+        external_reference: payment.external_reference,
+        metadata: payment.metadata
       });
-      const paymentClient = new Payment(client);
-      
-      const paymentInfo = await paymentClient.get({ id: paymentId });
-      
-      console.log('💰 Status do pagamento:', paymentInfo.status);
 
-      if (paymentInfo.status === 'approved') {
-        const metadata = paymentInfo.metadata as any;
-        const { barbershop_id, plan, period, user_id } = metadata;
+      // Extrair metadados
+      const metadata = payment.metadata as any;
+      const barbershopId = metadata?.barbershop_id;
+      const planId = metadata?.plan;
+      const period = metadata?.period || 'monthly';
+      const price = parseFloat(metadata?.price || '0');
 
-        // Calcular data de expiração
-        const expiresAt = new Date();
-        if (period === 'monthly') {
-          expiresAt.setMonth(expiresAt.getMonth() + 1);
-        } else if (period === 'semiannual') {
-          expiresAt.setMonth(expiresAt.getMonth() + 6);
-        } else if (period === 'annual') {
-          expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-        }
+      if (!barbershopId || !planId) {
+        console.log('⚠️ Webhook sem barbershop_id ou plan nos metadados');
+        return;
+      }
 
-        // Criar nova assinatura
-        await prisma.subscription.create({
+      // Buscar barbearia
+      const barbershop = await prisma.barbershop.findUnique({
+        where: { id: barbershopId }
+      });
+
+      if (!barbershop) {
+        console.log(`⚠️ Barbearia ${barbershopId} não encontrada`);
+        return;
+      }
+
+      // Processar baseado no status
+      if (payment.status === 'approved') {
+        console.log('✅ Pagamento APROVADO - Ativando plano');
+
+        // Cancelar assinaturas ativas anteriores
+        await prisma.subscription.updateMany({
+          where: {
+            barbershopId: barbershopId,
+            status: 'active'
+          },
           data: {
-            barbershopId: barbershop_id,
-            plan: plan,
-            status: 'active',
-            amount: paymentInfo.transaction_amount,
-            paymentMethod: 'mercado_pago',
-            currentPeriodStart: new Date(),
-            currentPeriodEnd: expiresAt
+            status: 'cancelled',
+            cancelledAt: new Date()
           }
         });
 
-        // Atualizar barbearia
-        const planConfig = PLANS[plan as keyof typeof PLANS];
+        // Calcular datas
+        const currentPeriodStart = new Date();
+        const currentPeriodEnd = new Date();
+        
+        if (period === 'annual') {
+          currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
+        } else if (period === 'semiannual') {
+          currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 6);
+        } else {
+          currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+        }
+
+        // Criar nova assinatura ativa
+        const subscription = await prisma.subscription.create({
+          data: {
+            barbershopId: barbershopId,
+            plan: planId,
+            status: 'active',
+            amount: price,
+            paymentMethod: payment.payment_type_id || 'mercadopago',
+            externalId: payment.id?.toString(),
+            currentPeriodStart,
+            currentPeriodEnd
+          }
+        });
+
+        // Atualizar limites da barbearia
+        const planConfig = PLANS[planId as keyof typeof PLANS];
         const maxBarbers = planConfig.features.maxBarbers === -1 ? 999 : planConfig.features.maxBarbers;
         const maxCustomers = planConfig.features.maxCustomers === -1 ? 999999 : planConfig.features.maxCustomers;
 
         await prisma.barbershop.update({
-          where: { id: barbershop_id },
+          where: { id: barbershopId },
           data: {
-            plan: plan,
+            plan: planId,
             planStatus: 'active',
             planStartedAt: new Date(),
-            planExpiresAt: expiresAt,
+            planExpiresAt: currentPeriodEnd,
             maxBarbers: maxBarbers,
             maxCustomers: maxCustomers
           }
@@ -193,27 +260,44 @@ router.post('/webhook', async (req, res) => {
         await prisma.payment.create({
           data: {
             subscriptionId: subscription.id,
-            amount: paymentInfo.transaction_amount,
-            status: 'completed',
-            paymentMethod: 'mercado_pago',
-            externalId: paymentId
+            amount: price,
+            status: 'paid',
+            paymentMethod: payment.payment_type_id || 'mercadopago',
+            externalId: payment.id?.toString(),
+            paidAt: new Date()
           }
         });
 
-        console.log('✅ Assinatura ativada para barbearia:', barbershop_id);
-      } else if (paymentInfo.status === 'rejected') {
-        console.log('❌ Pagamento rejeitado:', paymentId);
-      }
-      */
+        console.log('✅ Assinatura ativada com sucesso!');
 
-      // ⚠️ REMOVER DEPOIS: Apenas para testes
-      console.log('⚠️ WEBHOOK EM MODO DE TESTE - Implemente a lógica real acima');
+        // Enviar email de confirmação
+        try {
+          await sendPaymentConfirmationEmail({
+            to: barbershop.email,
+            barbershopName: barbershop.name,
+            planName: planConfig.name,
+            amount: price,
+            period: period,
+            expiresAt: currentPeriodEnd
+          });
+          console.log('📧 Email de confirmação enviado');
+        } catch (emailError) {
+          console.error('❌ Erro ao enviar email:', emailError);
+        }
+
+      } else if (payment.status === 'pending') {
+        console.log('⏳ Pagamento PENDENTE');
+
+      } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
+        console.log('❌ Pagamento REJEITADO/CANCELADO');
+      }
+
+    } else {
+      console.log(`ℹ️ Tipo de notificação ignorado: ${type || action}`);
     }
 
-    return res.status(200).json({ received: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Erro no webhook:', error);
-    return res.status(500).json({ error: 'Erro ao processar webhook' });
   }
 });
 
@@ -222,25 +306,23 @@ router.get('/check-payment/:paymentId', authMiddleware, async (req, res) => {
   try {
     const { paymentId } = req.params;
     
-    // ⚠️ IMPLEMENTAR: Buscar status real no Mercado Pago
-    /*
-    const paymentInfo = await paymentClient.get({ id: paymentId });
+    console.log(`🔍 Verificando pagamento: ${paymentId}`);
+    
+    const payment = await paymentClient.get({ id: paymentId });
     
     return res.json({ 
-      status: paymentInfo.status,
-      statusDetail: paymentInfo.status_detail,
-      amount: paymentInfo.transaction_amount
+      status: payment.status,
+      status_detail: payment.status_detail,
+      transaction_amount: payment.transaction_amount,
+      payment_type: payment.payment_type_id,
+      date_approved: payment.date_approved
     });
-    */
-    
-    // ⚠️ REMOVER DEPOIS: Apenas para testes
-    return res.json({ 
-      status: 'pending',
-      message: 'Pagamento em processamento'
-    });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Erro ao verificar pagamento:', error);
-    return res.status(500).json({ error: 'Erro ao verificar pagamento' });
+    return res.status(500).json({ 
+      error: 'Erro ao verificar pagamento',
+      details: error.message 
+    });
   }
 });
 
@@ -253,10 +335,6 @@ router.post('/calculate-price', async (req, res) => {
       return res.status(400).json({ error: 'Plano inválido' });
     }
 
-    if (!['monthly', 'semiannual', 'annual'].includes(period)) {
-      return res.status(400).json({ error: 'Período inválido' });
-    }
-
     const prices = PLAN_PRICES[plan];
     const planConfig = PLANS[plan as keyof typeof PLANS];
 
@@ -264,13 +342,11 @@ router.post('/calculate-price', async (req, res) => {
     if (period === 'semiannual') discountPercentage = 15;
     if (period === 'annual') discountPercentage = 30;
 
-    const selectedPrice = prices[period as keyof typeof prices];
-    const monthlyEquivalent = period === 'monthly' 
-      ? selectedPrice 
-      : selectedPrice / (period === 'semiannual' ? 6 : 12);
-
-    const fullPriceWithoutDiscount = prices.monthly * (period === 'monthly' ? 1 : period === 'semiannual' ? 6 : 12);
-    const savings = fullPriceWithoutDiscount - selectedPrice;
+    const finalPrice = prices[period as 'monthly' | 'semiannual' | 'annual'];
+    const monthlyPrice = prices.monthly;
+    const totalMonths = period === 'annual' ? 12 : period === 'semiannual' ? 6 : 1;
+    const fullPrice = monthlyPrice * totalMonths;
+    const savings = fullPrice - finalPrice;
 
     return res.json({
       plan: {
@@ -278,15 +354,19 @@ router.post('/calculate-price', async (req, res) => {
         name: planConfig.name
       },
       period,
-      price: Number(selectedPrice.toFixed(2)),
-      monthlyPrice: Number(prices.monthly.toFixed(2)),
-      monthlyEquivalent: Number(monthlyEquivalent.toFixed(2)),
+      price: finalPrice,
+      monthlyPrice: monthlyPrice,
+      fullPrice: fullPrice,
       discount: discountPercentage,
-      savings: Number(savings.toFixed(2))
+      savings: savings,
+      perMonth: (finalPrice / totalMonths).toFixed(2)
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Erro ao calcular preço:', error);
-    return res.status(500).json({ error: 'Erro ao calcular preço' });
+    return res.status(500).json({ 
+      error: 'Erro ao calcular preço',
+      details: error.message 
+    });
   }
 });
 
