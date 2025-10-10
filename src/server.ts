@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import adminRoutes from './routes/admin.routes';
 import authRoutes from './routes/auth.routes';
 import barbershopRoutes from './routes/barbershop.routes';
 import serviceRoutes from './routes/service.routes';
@@ -16,7 +17,6 @@ import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
 import { startCronJobs } from './jobs';
-import adminRoutes from './routes/admin.routes';
 
 console.log('🔵 Iniciando servidor...');
 
