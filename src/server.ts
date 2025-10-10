@@ -16,6 +16,7 @@ import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
 import { startCronJobs } from './jobs';
+import adminRoutes from './routes/admin.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -74,6 +75,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/public', publicBarbershopRoutes);
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/appointments', clientAppointmentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
