@@ -25,7 +25,7 @@ export async function adminMiddleware(req: Request, res: Response, next: NextFun
     // Você pode adicionar um campo "isSuperAdmin" na tabela users
     // Ou verificar por email específico
     const ADMIN_EMAILS = [
-      'alex.bueno22@hotmail.com',
+      'alex.zila@hotmail.com',
       'appbarberflow@gmail.com'
     ];
 
