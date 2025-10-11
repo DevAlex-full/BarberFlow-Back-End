@@ -30,9 +30,9 @@ const PORT = process.env.PORT || 4000;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://barberflowoficial.vercel.app', // ✅ CORRIGIDO: HTTPS
+  'https://barberflowoficial.vercel.app',
   process.env.FRONTEND_URL,
-].filter(Boolean);
+].filter(Boolean).map(url => url?.replace(/\/$/, '')); // Remove barra final de todas
 
 console.log('🌐 Origens permitidas (CORS):', allowedOrigins);
 
@@ -41,10 +41,20 @@ app.use(cors({
     // Permitir requisições sem origin (mobile apps, Postman, etc)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Remover barra final do origin para comparação
+    const cleanOrigin = origin.replace(/\/$/, '');
+    
+    // Verificar se o origin (sem barra) está na lista
+    const isAllowed = allowedOrigins.some(allowed => 
+      allowed === cleanOrigin
+    );
+    
+    if (isAllowed) {
+      console.log('✅ Origem permitida:', origin);
       callback(null, true);
     } else {
       console.log('❌ Origem bloqueada por CORS:', origin);
+      console.log('📋 Origens permitidas:', allowedOrigins);
       callback(new Error('Origem não permitida pela política de CORS'));
     }
   },
@@ -52,7 +62,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 600
+  maxAge: 600,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 app.use(express.json());
