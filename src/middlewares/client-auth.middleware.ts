@@ -4,23 +4,12 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface ClientPayload {
+interface ClientTokenPayload {
   id: string;
   type: 'client';
 }
 
-// Extender o tipo Request do Express
-declare global {
-  namespace Express {
-    interface Request {
-      client?: {
-        id: string;
-        name: string;
-        email: string;
-      };
-    }
-  }
-}
+// ✅ REMOVIDO: Declaração duplicada de tipos (já está em src/types/express.d.ts)
 
 export async function clientAuthMiddleware(
   req: Request,
@@ -44,7 +33,7 @@ export async function clientAuthMiddleware(
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET || 'your-secret-key'
-    ) as ClientPayload;
+    ) as ClientTokenPayload;
 
     if (decoded.type !== 'client') {
       return res.status(401).json({ error: 'Tipo de token inválido' });
@@ -69,8 +58,13 @@ export async function clientAuthMiddleware(
       return res.status(401).json({ error: 'Conta desativada' });
     }
 
-    // Adicionar cliente ao request
-    req.client = client;
+    // ✅ Adicionar cliente ao request (tipagem agora compatível)
+    req.client = {
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      active: client.active,
+    };
 
     next();
   } catch (error) {

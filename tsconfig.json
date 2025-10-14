@@ -19,7 +19,8 @@
     "strictNullChecks": false,
     "strictFunctionTypes": false,
     "strictBindCallApply": false,
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": false,
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],

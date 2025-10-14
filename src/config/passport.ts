@@ -8,7 +8,7 @@ import {
   Strategy as FacebookStrategy, 
   Profile as FacebookProfile 
 } from 'passport-facebook';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Client, User } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -41,7 +41,7 @@ if (GOOGLE_CONFIG.clientID && GOOGLE_CONFIG.clientSecret && GOOGLE_CONFIG.callba
 
           if (!email) {
             console.warn('⚠️ Google OAuth: Email não fornecido');
-            return done(new Error('Email não fornecido pelo Google'), undefined);
+            return done(new Error('Email não fornecido pelo Google'), false);
           }
 
           let client = await prisma.client.findUnique({
@@ -69,10 +69,11 @@ if (GOOGLE_CONFIG.clientID && GOOGLE_CONFIG.clientSecret && GOOGLE_CONFIG.callba
             });
           }
 
-          return done(null, client);
+          // ✅ Retorna o client (Passport aceita qualquer tipo)
+          return done(null, client as any);
         } catch (error) {
           console.error('❌ Erro no Google OAuth:', error);
-          return done(error as Error, undefined);
+          return done(error as Error, false);
         }
       }
     )
@@ -114,7 +115,7 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
             console.warn('⚠️ Facebook OAuth: Email não fornecido');
             return done(
               new Error('Email não fornecido pelo Facebook'),
-              undefined
+              false
             );
           }
 
@@ -148,10 +149,11 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
             });
           }
 
-          return done(null, client);
+          // ✅ Retorna o client (Passport aceita qualquer tipo)
+          return done(null, client as any);
         } catch (error) {
           console.error('❌ Erro no Facebook OAuth:', error);
-          return done(error as Error, undefined);
+          return done(error as Error, false);
         }
       }
     )
@@ -161,4 +163,32 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
   console.warn('⚠️  Facebook OAuth desabilitado (credenciais ausentes ou incompletas)');
 }
 
-export default passport
+// ===========================
+// SERIALIZAÇÃO (para sessões - se necessário)
+// ===========================
+passport.serializeUser((entity: Express.User | Client, done) => {
+  // Verifica se é User (barbearia) ou Client (OAuth)
+  if ('barbershopId' in entity) {
+    // É um User (barbearia)
+    done(null, { type: 'user', id: entity.id });
+  } else {
+    // É um Client (OAuth)
+    done(null, { type: 'client', id: entity.id });
+  }
+});
+
+passport.deserializeUser(async (obj: any, done) => {
+  try {
+    if (obj.type === 'user') {
+      const user = await prisma.user.findUnique({ where: { id: obj.id } });
+      done(null, user as any);
+    } else {
+      const client = await prisma.client.findUnique({ where: { id: obj.id } });
+      done(null, client as any);
+    }
+  } catch (error) {
+    done(error, null);
+  }
+});
+
+export default passport;
