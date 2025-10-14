@@ -530,4 +530,69 @@ export async function sendRenewalReminderEmail(data: {
   }
 }
 
+export const sendPasswordResetEmail = async (
+  email: string,
+  name: string,
+  resetUrl: string
+) => {
+  const emailHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #2463eb 0%, #1d4fd8 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none; }
+        .content h2 { color: #1f2937; margin-top: 0; }
+        .button { display: inline-block; background: #2463eb; color: white !important; padding: 14px 40px; text-decoration: none; border-radius: 8px; margin: 25px 0; font-weight: bold; font-size: 16px; }
+        .button:hover { background: #1d4fd8; }
+        .link-box { background: #f9fafb; padding: 15px; border: 1px solid #e5e7eb; border-radius: 6px; word-break: break-all; font-size: 14px; color: #6b7280; margin: 20px 0; }
+        .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 20px 0; border-radius: 4px; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔐 BarberFlow</h1>
+        </div>
+        <div class="content">
+          <h2>Recuperação de Senha</h2>
+          <p>Olá, <strong>${name}</strong>!</p>
+          <p>Recebemos uma solicitação para redefinir sua senha no BarberFlow. Clique no botão abaixo para criar uma nova senha:</p>
+          
+          <div style="text-align: center;">
+            <a href="${resetUrl}" class="button">Redefinir Minha Senha</a>
+          </div>
+          
+          <p>Ou copie e cole este link no seu navegador:</p>
+          <div class="link-box">${resetUrl}</div>
+          
+          <div class="warning">
+            <strong>⚠️ Atenção:</strong> Este link expira em <strong>1 hora</strong> por motivos de segurança.
+          </div>
+          
+          <p style="margin-top: 30px; font-size: 14px; color: #6b7280;">
+            Se você não solicitou a recuperação de senha, ignore este email. Sua senha permanecerá inalterada e segura.
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2025 BarberFlow. Todos os direitos reservados.</p>
+          <p>Este é um email automático, por favor não responda.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: '🔐 Recuperação de Senha - BarberFlow',
+    html: emailHtml,
+  });
+};
+
 export default transporter;

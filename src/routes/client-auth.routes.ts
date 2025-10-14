@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import passport from '../config/passport';
+import { forgotPassword, resetPassword } from '../middlewares/client-auth.middleware';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -257,5 +258,8 @@ router.get('/me', async (req, res) => {
     return res.status(401).json({ error: 'Token inválido' });
   }
 });
+
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 export default router;
