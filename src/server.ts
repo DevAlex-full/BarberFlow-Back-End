@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import passport from './config/passport';
 import adminRoutes from './routes/admin.routes';
 import authRoutes from './routes/auth.routes';
 import barbershopRoutes from './routes/barbershop.routes';
@@ -70,6 +71,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ✅ INICIALIZAR PASSPORT (ADICIONADO)
+app.use(passport.initialize());
+console.log('🔐 Passport inicializado com sucesso!');
+
 // Servir arquivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
@@ -95,7 +100,11 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     message: 'BarberFlow API está rodando!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    oauth: {
+      google: !!process.env.GOOGLE_CLIENT_ID,
+      facebook: !!process.env.FACEBOOK_APP_ID
+    }
   });
 });
 
@@ -115,7 +124,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 app.listen(PORT, () => {
   console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}\n`);
+  console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}`);
+  console.log(`🔐 OAuth Google: ${process.env.GOOGLE_CLIENT_ID ? '✅' : '❌'}`);
+  console.log(`🔐 OAuth Facebook: ${process.env.FACEBOOK_APP_ID ? '✅' : '❌'}\n`);
   
   startCronJobs();
 });

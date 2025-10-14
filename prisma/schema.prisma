@@ -135,18 +135,27 @@ model Customer {
   @@map("customers")
 }
 
-// NOVO: Modelo para clientes que fazem login no sistema público
+// ============================================
+// MODELO CLIENT - COM SUPORTE OAUTH
+// ============================================
 model Client {
-  id        String    @id @default(uuid())
-  name      String
-  email     String    @unique
-  phone     String
-  password  String
-  avatar    String?
-  birthDate DateTime?
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id         String    @id @default(uuid())
+  name       String
+  email      String    @unique
+  
+  // ✅ TORNAR PHONE E PASSWORD NULLABLE
+  phone      String?   // Agora aceita null
+  password   String?   // Agora aceita null
+  
+  avatar     String?
+  birthDate  DateTime?
+  active     Boolean   @default(true)
+  
+  googleId   String?   @unique
+  facebookId String?   @unique
+  
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   appointments Appointment[]
   
@@ -169,7 +178,7 @@ model Appointment {
   customer   Customer? @relation(fields: [customerId], references: [id])
   customerId String?
 
-  // NOVO: Relacionamento com Client (clientes do sistema público)
+  // Relacionamento com Client (clientes do sistema público)
   client     Client?   @relation(fields: [clientId], references: [id])
   clientId   String?
 

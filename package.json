@@ -32,10 +32,13 @@
     "multer": "^1.4.5-lts.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
+    "passport": "^0.7.0",
+    "passport-facebook": "^3.0.0",
+    "passport-google-oauth20": "^2.0.0",
+    "prisma": "^5.7.0",
     "twilio": "^5.10.2",
-    "zod": "^3.22.4",
     "typescript": "^5.3.3",
-    "prisma": "^5.7.0"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -46,6 +49,9 @@
     "@types/node": "^20.10.5",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^7.0.2",
+    "@types/passport": "^1.0.17",
+    "@types/passport-facebook": "^3.0.3",
+    "@types/passport-google-oauth20": "^2.0.16",
     "ts-node": "^10.9.2",
     "tsx": "^4.7.0"
   }

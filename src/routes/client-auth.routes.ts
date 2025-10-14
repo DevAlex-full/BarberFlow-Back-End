@@ -1,10 +1,106 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import passport from '../config/passport';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// Interface para requisições autenticadas
+interface AuthRequest extends Request {
+  user?: any;
+}
+
+// ========== ROTAS OAUTH (NOVAS) ==========
+
+// Google OAuth - Inicia o fluxo
+router.get(
+  '/google',
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+  })
+);
+
+// Google OAuth - Callback
+router.get(
+  '/google/callback',
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}?error=google_auth_failed`,
+  }),
+  (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.redirect(`${process.env.FRONTEND_URL}?error=auth_failed`);
+      }
+
+      const token = jwt.sign(
+        { id: req.user.id, type: 'client' },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '7d' }
+      );
+
+      const userData = encodeURIComponent(JSON.stringify({
+        id: req.user.id,
+        email: req.user.email,
+        name: req.user.name,
+        phone: req.user.phone,
+      }));
+
+      res.redirect(`${process.env.FRONTEND_URL}?token=${token}&user=${userData}`);
+    } catch (error) {
+      console.error('Erro no callback do Google:', error);
+      res.redirect(`${process.env.FRONTEND_URL}?error=callback_failed`);
+    }
+  }
+);
+
+// Facebook OAuth - Inicia o fluxo
+router.get(
+  '/facebook',
+  passport.authenticate('facebook', {
+    scope: ['email'],
+    session: false,
+  })
+);
+
+// Facebook OAuth - Callback
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', {
+    session: false,
+    failureRedirect: `${process.env.FRONTEND_URL}?error=facebook_auth_failed`,
+  }),
+  (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.redirect(`${process.env.FRONTEND_URL}?error=auth_failed`);
+      }
+
+      const token = jwt.sign(
+        { id: req.user.id, type: 'client' },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '7d' }
+      );
+
+      const userData = encodeURIComponent(JSON.stringify({
+        id: req.user.id,
+        email: req.user.email,
+        name: req.user.name,
+        phone: req.user.phone,
+      }));
+
+      res.redirect(`${process.env.FRONTEND_URL}?token=${token}&user=${userData}`);
+    } catch (error) {
+      console.error('Erro no callback do Facebook:', error);
+      res.redirect(`${process.env.FRONTEND_URL}?error=callback_failed`);
+    }
+  }
+);
+
+// ========== ROTAS TRADICIONAIS (MANTIDAS) ==========
 
 // Cadastro de cliente
 router.post('/register', async (req, res) => {
