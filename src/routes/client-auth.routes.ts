@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import passport from '../config/passport';
 import { forgotPassword, resetPassword } from '../middlewares/client-auth.middleware';
 
@@ -256,6 +257,49 @@ router.get('/me', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar dados:', error);
     return res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+// Validar se o token de reset é válido
+router.get('/validate-reset-token', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Token não fornecido' });
+    }
+
+    // Hash do token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    // Buscar cliente com token válido
+    const client = await prisma.client.findFirst({
+      where: {
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: {
+          gt: new Date(), // Token ainda não expirou
+        },
+      },
+    });
+
+    if (!client) {
+      return res.status(400).json({ 
+        valid: false, 
+        error: 'Token inválido ou expirado' 
+      });
+    }
+
+    return res.status(200).json({ 
+      valid: true, 
+      message: 'Token válido' 
+    });
+
+  } catch (error) {
+    console.error('Erro ao validar token:', error);
+    return res.status(500).json({ error: 'Erro ao validar token' });
   }
 });
 
