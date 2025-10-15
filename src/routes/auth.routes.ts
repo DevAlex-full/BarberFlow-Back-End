@@ -186,84 +186,108 @@ router.post('/forgot-password', async (req, res) => {
       });
     }
 
+    // ✅ ADICIONAR LOGS DE DEBUG
+    console.log('👤 Usuário encontrado:', user.id, user.email);
+
     // Gerar token único
     const resetToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    console.log('🔑 Token gerado (hash):', hashedToken.substring(0, 20) + '...');
 
     // Expiração: 1 hora
     const resetTokenExpiry = new Date();
     resetTokenExpiry.setHours(resetTokenExpiry.getHours() + 1);
 
-    // Salvar token no banco
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetPasswordToken: hashedToken,
-        resetPasswordExpires: resetTokenExpiry
-      }
-    });
+    console.log('⏰ Token expira em:', resetTokenExpiry);
+
+    // ✅ TENTAR SALVAR TOKEN NO BANCO
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: hashedToken,
+          resetPasswordExpires: resetTokenExpiry
+        }
+      });
+      console.log('✅ Token salvo no banco com sucesso');
+    } catch (dbError) {
+      console.error('❌ ERRO AO SALVAR TOKEN NO BANCO:', dbError);
+      throw dbError; // Re-throw para capturar no catch externo
+    }
 
     // URL de reset
     const resetUrl = `${process.env.FRONTEND_URL}/recuperar-senha/redefinir?token=${resetToken}`;
 
-    // Enviar email
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .button { display: inline-block; padding: 15px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🔒 Recuperação de Senha</h1>
-          </div>
-          <div class="content">
-            <p>Olá, <strong>${user.name}</strong>!</p>
-            <p>Recebemos uma solicitação para redefinir a senha da sua conta no <strong>BarberFlow</strong>.</p>
-            <p>Clique no botão abaixo para criar uma nova senha:</p>
-            <div style="text-align: center;">
-              <a href="${resetUrl}" class="button">Redefinir Senha</a>
+    console.log('🔗 Link de reset gerado:', resetUrl);
+
+    // ✅ TENTAR ENVIAR EMAIL (sem quebrar se falhar)
+    try {
+      const emailHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; padding: 15px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔒 Recuperação de Senha</h1>
             </div>
-            <p>Ou copie e cole este link no navegador:</p>
-            <p style="background: #fff; padding: 10px; border: 1px solid #ddd; word-break: break-all; font-size: 12px;">
-              ${resetUrl}
-            </p>
-            <p><strong>⏰ Este link expira em 1 hora.</strong></p>
-            <p>Se você não solicitou esta alteração, ignore este email. Sua senha permanecerá inalterada.</p>
+            <div class="content">
+              <p>Olá, <strong>${user.name}</strong>!</p>
+              <p>Recebemos uma solicitação para redefinir a senha da sua conta no <strong>BarberFlow</strong>.</p>
+              <p>Clique no botão abaixo para criar uma nova senha:</p>
+              <div style="text-align: center;">
+                <a href="${resetUrl}" class="button">Redefinir Senha</a>
+              </div>
+              <p>Ou copie e cole este link no navegador:</p>
+              <p style="background: #fff; padding: 10px; border: 1px solid #ddd; word-break: break-all; font-size: 12px;">
+                ${resetUrl}
+              </p>
+              <p><strong>⏰ Este link expira em 1 hora.</strong></p>
+              <p>Se você não solicitou esta alteração, ignore este email. Sua senha permanecerá inalterada.</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 BarberFlow - Gestão Profissional de Barbearias</p>
+              <p>Este é um email automático, por favor não responda.</p>
+            </div>
           </div>
-          <div class="footer">
-            <p>© 2025 BarberFlow - Gestão Profissional de Barbearias</p>
-            <p>Este é um email automático, por favor não responda.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+        </body>
+        </html>
+      `;
 
-    await sendEmail({
-      to: user.email,
-      subject: '🔒 Recuperação de Senha - BarberFlow',
-      html: emailHtml
-    });
+      await sendEmail({
+        to: user.email,
+        subject: '🔒 Recuperação de Senha - BarberFlow',
+        html: emailHtml
+      });
 
-    console.log('✅ Email de recuperação enviado para:', email);
+      console.log('✅ Email de recuperação enviado para:', email);
+    } catch (emailError) {
+      console.error('⚠️ Erro ao enviar email (não bloqueante):', emailError);
+      // NÃO fazer throw - email é opcional por enquanto
+    }
 
     return res.json({ 
       message: 'Link de recuperação enviado para seu email' 
     });
 
-  } catch (error) {
-    console.error('❌ Erro ao processar recuperação de senha:', error);
-    return res.status(500).json({ error: 'Erro ao processar solicitação' });
+  } catch (error: any) {
+    console.error('❌ ERRO CRÍTICO ao processar recuperação de senha:', error);
+    console.error('Stack trace:', error.stack);
+    return res.status(500).json({ 
+      error: 'Erro ao processar solicitação',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
