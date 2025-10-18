@@ -9,6 +9,12 @@ import { sendEmail } from '../services/email.service';
 const router = Router();
 const prisma = new PrismaClient();
 
+// ✅ EMAILS DE SUPER ADMIN (mesmos do admin.middleware.ts)
+const SUPER_ADMIN_EMAILS = [
+  'alex.zila@hotmail.com',
+  'appbarberflow@gmail.com'
+];
+
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -46,7 +52,7 @@ router.post('/register', async (req, res) => {
         email,
         password: hashedPassword,
         phone,
-        role: 'admin',
+        role: 'ADMIN',
         barbershopId: barbershop.id
       }
     });
@@ -78,7 +84,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login
+// Login (com suporte a super admin)
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -107,13 +113,22 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Usuário inativo' });
     }
 
+    // ✅ VERIFICAR SE É SUPER ADMIN
+    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(email);
+
+    // ✅ Para super admin, barbershopId pode ser null
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, barbershopId: user.barbershopId },
+      { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role, 
+        barbershopId: user.barbershopId || null // ✅ Permite null para super admin
+      },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
     );
 
-    console.log('✅ Login bem-sucedido:', email);
+    console.log('✅ Login bem-sucedido:', email, isSuperAdmin ? '(SUPER ADMIN)' : '');
 
     return res.json({
       user: {
@@ -122,7 +137,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         barbershopId: user.barbershopId,
-        avatar: user.avatar || null
+        isSuperAdmin // ✅ Indica se é super admin
       },
       barbershop: user.barbershop ? {
         id: user.barbershop.id,
@@ -152,7 +167,10 @@ router.get('/me', authMiddleware, async (req, res) => {
 
     const { password, ...userWithoutPassword } = user;
 
-    return res.json(userWithoutPassword);
+    return res.json({
+      ...userWithoutPassword,
+      isSuperAdmin: SUPER_ADMIN_EMAILS.includes(user.email)
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Erro ao buscar usuário' });
@@ -316,97 +334,6 @@ router.post('/reset-password', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao redefinir senha:', error);
     return res.status(500).json({ error: 'Erro ao redefinir senha' });
-  }
-});
-
-// Ver todos os usuários
-router.get('/debug/users', async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        active: true,
-        barbershopId: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    
-    return res.json({ 
-      total: users.length, 
-      users 
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar usuários' });
-  }
-});
-
-// Ver todas as barbearias
-router.get('/debug/barbershops', async (req, res) => {
-  try {
-    const barbershops = await prisma.barbershop.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        plan: true,
-        planStatus: true,
-        createdAt: true,
-        _count: {
-          select: {
-            users: true,
-            customers: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    
-    return res.json({ 
-      total: barbershops.length, 
-      barbershops 
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar barbearias' });
-  }
-});
-
-// Verificar se email existe
-router.get('/debug/check-email/:email', async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        active: true,
-        barbershopId: true,
-        barbershop: {
-          select: {
-            id: true,
-            name: true,
-            plan: true
-          }
-        }
-      }
-    });
-    
-    return res.json({ 
-      exists: !!user,
-      user 
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro' });
   }
 });
 
