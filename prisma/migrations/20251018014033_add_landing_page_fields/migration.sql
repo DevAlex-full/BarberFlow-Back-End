@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "barbershops" ADD COLUMN     "allowOnlineBooking" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "businessHours" JSONB,
+ADD COLUMN     "description" TEXT,
+ADD COLUMN     "facebookUrl" TEXT,
+ADD COLUMN     "galleryImages" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "heroImage" TEXT,
+ADD COLUMN     "heroSubtitle" TEXT,
+ADD COLUMN     "heroTitle" TEXT,
+ADD COLUMN     "instagramUrl" TEXT,
+ADD COLUMN     "primaryColor" TEXT DEFAULT '#2563eb',
+ADD COLUMN     "secondaryColor" TEXT DEFAULT '#7c3aed',
+ADD COLUMN     "showGallery" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "showReviews" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "showTeam" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "whatsappNumber" TEXT,
+ADD COLUMN     "youtubeUrl" TEXT;

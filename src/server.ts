@@ -80,7 +80,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/barbershops', barbershopRoutes);
+app.use('/api/barbershop', barbershopRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/customers', customerRoutes);

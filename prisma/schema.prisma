@@ -53,6 +53,24 @@ model Barbershop {
   maxBarbers   Int @default(1)
   maxCustomers Int @default(100)
 
+  // ===== CAMPOS DA LANDING PAGE =====
+  heroImage         String?
+  heroTitle         String?
+  heroSubtitle      String?
+  description       String?
+  galleryImages     String[] @default([])
+  businessHours     Json?
+  instagramUrl      String?
+  facebookUrl       String?
+  whatsappNumber    String?
+  youtubeUrl        String?
+  primaryColor      String?  @default("#2563eb")
+  secondaryColor    String?  @default("#7c3aed")
+  showTeam          Boolean  @default(true)
+  showGallery       Boolean  @default(true)
+  showReviews       Boolean  @default(true)
+  allowOnlineBooking Boolean @default(true)
+
   users        User[]
   services     Service[]
   appointments Appointment[]
@@ -138,25 +156,17 @@ model Customer {
   @@map("customers")
 }
 
-// ============================================
-// MODELO CLIENT - COM SUPORTE OAUTH
-// ============================================
 model Client {
   id         String    @id @default(uuid())
   name       String
   email      String    @unique
-  
-  // ✅ TORNAR PHONE E PASSWORD NULLABLE
-  phone      String?   // Agora aceita null
-  password   String?   // Agora aceita null
-  
+  phone      String?
+  password   String?
   avatar     String?
   birthDate  DateTime?
   active     Boolean   @default(true)
-  
   googleId   String?   @unique
   facebookId String?   @unique
-  
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -180,11 +190,9 @@ model Appointment {
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id])
   barbershopId String
 
-  // Relacionamento com Customer (clientes cadastrados pela barbearia)
   customer   Customer? @relation(fields: [customerId], references: [id])
   customerId String?
 
-  // Relacionamento com Client (clientes do sistema público)
   client     Client?   @relation(fields: [clientId], references: [id])
   clientId   String?
 
