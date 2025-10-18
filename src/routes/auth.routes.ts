@@ -319,4 +319,95 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// Ver todos os usuários
+router.get('/debug/users', async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+        barbershopId: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    return res.json({ 
+      total: users.length, 
+      users 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
+// Ver todas as barbearias
+router.get('/debug/barbershops', async (req, res) => {
+  try {
+    const barbershops = await prisma.barbershop.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        plan: true,
+        planStatus: true,
+        createdAt: true,
+        _count: {
+          select: {
+            users: true,
+            customers: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    return res.json({ 
+      total: barbershops.length, 
+      barbershops 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Erro ao buscar barbearias' });
+  }
+});
+
+// Verificar se email existe
+router.get('/debug/check-email/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+        barbershopId: true,
+        barbershop: {
+          select: {
+            id: true,
+            name: true,
+            plan: true
+          }
+        }
+      }
+    });
+    
+    return res.json({ 
+      exists: !!user,
+      user 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Erro' });
+  }
+});
+
 export default router;
