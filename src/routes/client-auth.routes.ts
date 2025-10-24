@@ -30,12 +30,12 @@ router.get(
   '/google/callback',
   passport.authenticate('google', {
     session: false,
-    failureRedirect: `${process.env.FRONTEND_URL}?error=google_auth_failed`,
+    failureRedirect: `${process.env.FRONTEND_URL}/sou-cliente?error=google_auth_failed`,
   }),
   (req: AuthRequest, res: Response) => {
     try {
       if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL}?error=auth_failed`);
+        return res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?error=auth_failed`);
       }
 
       const token = jwt.sign(
@@ -51,10 +51,10 @@ router.get(
         phone: req.user.phone,
       }));
 
-      res.redirect(`${process.env.FRONTEND_URL}?token=${token}&user=${userData}`);
+      res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?token=${token}&user=${userData}`);
     } catch (error) {
       console.error('Erro no callback do Google:', error);
-      res.redirect(`${process.env.FRONTEND_URL}?error=callback_failed`);
+      res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?error=callback_failed`);
     }
   }
 );
@@ -73,12 +73,12 @@ router.get(
   '/facebook/callback',
   passport.authenticate('facebook', {
     session: false,
-    failureRedirect: `${process.env.FRONTEND_URL}?error=facebook_auth_failed`,
+    failureRedirect: `${process.env.FRONTEND_URL}/sou-cliente?error=facebook_auth_failed`,
   }),
   (req: AuthRequest, res: Response) => {
     try {
       if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL}?error=auth_failed`);
+        return res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?error=auth_failed`);
       }
 
       const token = jwt.sign(
@@ -94,10 +94,10 @@ router.get(
         phone: req.user.phone,
       }));
 
-      res.redirect(`${process.env.FRONTEND_URL}?token=${token}&user=${userData}`);
+      res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?token=${token}&user=${userData}`);
     } catch (error) {
       console.error('Erro no callback do Facebook:', error);
-      res.redirect(`${process.env.FRONTEND_URL}?error=callback_failed`);
+      res.redirect(`${process.env.FRONTEND_URL}/sou-cliente?error=callback_failed`);
     }
   }
 );
