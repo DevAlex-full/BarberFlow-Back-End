@@ -11,7 +11,7 @@ router.get('/barbershops', async (req, res) => {
 
     const where: any = {
       active: true,
-      planStatus: 'active', // Apenas barbearias com plano ativo
+      // ✅ REMOVIDO planStatus: 'active' - muito restritivo para testes
     };
 
     if (search) {
@@ -39,14 +39,17 @@ router.get('/barbershops', async (req, res) => {
         city: true,
         state: true,
         logo: true,
+        plan: true, // ✅ ADICIONADO
         createdAt: true,
       },
       orderBy: { name: 'asc' },
     });
 
+    console.log(`✅ [PUBLIC] ${barbershops.length} barbearias encontradas`);
+
     return res.json(barbershops);
   } catch (error) {
-    console.error('Erro ao buscar barbearias:', error);
+    console.error('❌ [PUBLIC] Erro ao buscar barbearias:', error);
     return res.status(500).json({ error: 'Erro ao buscar barbearias' });
   }
 });
@@ -56,8 +59,14 @@ router.get('/barbershops/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log(`🔍 [PUBLIC] Buscando barbearia: ${id}`);
+
     const barbershop = await prisma.barbershop.findUnique({
-      where: { id, active: true, planStatus: 'active' },
+      where: { 
+        id, 
+        active: true 
+        // ✅ REMOVIDO planStatus: 'active' para permitir barbearias em teste
+      },
       include: {
         services: {
           where: { active: true },
@@ -70,23 +79,31 @@ router.get('/barbershops/:id', async (req, res) => {
           },
         },
         users: {
-          where: { active: true, role: 'barber' },
+          where: { active: true }, // ✅ REMOVIDO role: 'barber'
           select: {
             id: true,
             name: true,
             avatar: true,
+            role: true, // ✅ ADICIONADO para debug
           },
         },
       },
     });
 
     if (!barbershop) {
+      console.log(`❌ [PUBLIC] Barbearia não encontrada: ${id}`);
       return res.status(404).json({ error: 'Barbearia não encontrada' });
     }
 
+    console.log(`✅ [PUBLIC] Barbearia encontrada:`, {
+      name: barbershop.name,
+      services: barbershop.services.length,
+      users: barbershop.users.length
+    });
+
     return res.json(barbershop);
   } catch (error) {
-    console.error('Erro ao buscar barbearia:', error);
+    console.error('❌ [PUBLIC] Erro ao buscar barbearia:', error);
     return res.status(500).json({ error: 'Erro ao buscar barbearia' });
   }
 });
@@ -96,6 +113,8 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
   try {
     const { id } = req.params;
     const { date, barberId, serviceId } = req.query;
+
+    console.log(`🕐 [PUBLIC] Buscando horários:`, { id, date, barberId, serviceId });
 
     if (!date || !serviceId) {
       return res.status(400).json({ error: 'Data e serviço são obrigatórios' });
@@ -107,6 +126,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     });
 
     if (!service) {
+      console.log(`❌ [PUBLIC] Serviço não encontrado: ${serviceId}`);
       return res.status(404).json({ error: 'Serviço não encontrado' });
     }
 
@@ -132,6 +152,8 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
         service: { select: { duration: true } },
       },
     });
+
+    console.log(`📅 [PUBLIC] ${appointments.length} agendamentos existentes nesta data`);
 
     // Gerar horários disponíveis (9h às 18h, intervalos de 30min)
     const availableTimes: string[] = [];
@@ -166,9 +188,11 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
       }
     }
 
+    console.log(`✅ [PUBLIC] ${availableTimes.length} horários disponíveis`);
+
     return res.json(availableTimes);
   } catch (error) {
-    console.error('Erro ao buscar horários:', error);
+    console.error('❌ [PUBLIC] Erro ao buscar horários:', error);
     return res.status(500).json({ error: 'Erro ao buscar horários disponíveis' });
   }
 });
