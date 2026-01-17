@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "npx prisma generate && tsc",
-    "start": "node dist/server.js",
-    "postinstall": "npx prisma generate"
+    "start": "node dist/server.js"
   },
   "keywords": [
     "barbershop",
