@@ -32,7 +32,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://barberflowoficial.vercel.app',
+  'https://barberflow-api-v2.onrender.com',
   process.env.FRONTEND_URL,
+  process.env.BACKEND_URL,
 ].filter(Boolean).map(url => url?.replace(/\/$/, '')); // Remove barra final de todas
 
 console.log('🌐 Origens permitidas (CORS):', allowedOrigins);
