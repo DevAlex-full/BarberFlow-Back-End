@@ -3,7 +3,7 @@ export const PLANS = {
     id: 'trial',
     name: 'Trial Gratuito',
     price: 0,
-    duration: 30, // dias
+    duration: 15, // dias
     features: {
       maxBarbers: 1,
       maxCustomers: 50,
@@ -13,7 +13,7 @@ export const PLANS = {
       hasEmailSupport: true,
       hasPrioritySupport: false,
     },
-    description: '30 dias grátis para testar o sistema'
+    description: '15 dias grátis para testar o sistema'
   },
   
   basic: {
