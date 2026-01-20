@@ -9,9 +9,9 @@ import { sendEmail } from '../services/email.service';
 const router = Router();
 const prisma = new PrismaClient();
 
-// ✅ EMAILS DE SUPER ADMIN (mesmos do admin.middleware.ts)
+// ✅ EMAIL ATUALIZADO DO SUPER ADMIN
 const SUPER_ADMIN_EMAILS = [
-  'alex.zila@hotmail.com',
+  'alex.bueno22@hotmail.com',  // ✅ NOVO EMAIL
   'appbarberflow@gmail.com'
 ];
 
@@ -122,7 +122,7 @@ router.post('/login', async (req, res) => {
         id: user.id, 
         email: user.email, 
         role: user.role, 
-        barbershopId: user.barbershopId || null // ✅ Permite null para super admin
+        barbershopId: user.barbershopId || null
       },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
