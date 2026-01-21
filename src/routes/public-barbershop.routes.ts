@@ -10,7 +10,6 @@ router.get('/barbershops', async (req, res) => {
 
     const where: any = {
       active: true,
-      // ✅ REMOVIDO planStatus: 'active' - muito restritivo para testes
     };
 
     if (search) {
@@ -38,7 +37,7 @@ router.get('/barbershops', async (req, res) => {
         city: true,
         state: true,
         logo: true,
-        plan: true, // ✅ ADICIONADO
+        plan: true,
         createdAt: true,
       },
       orderBy: { name: 'asc' },
@@ -53,7 +52,7 @@ router.get('/barbershops', async (req, res) => {
   }
 });
 
-// Buscar detalhes de uma barbearia específica
+// ✅ FIX: Buscar detalhes de uma barbearia específica COM CONFIG
 router.get('/barbershops/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -64,9 +63,38 @@ router.get('/barbershops/:id', async (req, res) => {
       where: { 
         id, 
         active: true 
-        // ✅ REMOVIDO planStatus: 'active' para permitir barbearias em teste
       },
-      include: {
+      select: {
+        // ✅ Dados básicos
+        id: true,
+        name: true,
+        logo: true,
+        address: true,
+        city: true,
+        state: true,
+        phone: true,
+        plan: true,
+        active: true,
+        
+        // ✅ CONFIGURAÇÕES DA LANDING PAGE (ADICIONADO)
+        heroImage: true,
+        heroTitle: true,
+        heroSubtitle: true,
+        description: true,
+        galleryImages: true,
+        businessHours: true,
+        instagramUrl: true,
+        facebookUrl: true,
+        whatsappNumber: true,
+        youtubeUrl: true,
+        primaryColor: true,
+        secondaryColor: true,
+        showTeam: true,
+        showGallery: true,
+        showReviews: true,
+        allowOnlineBooking: true,
+        
+        // ✅ Serviços e equipe
         services: {
           where: { active: true },
           select: {
@@ -78,12 +106,12 @@ router.get('/barbershops/:id', async (req, res) => {
           },
         },
         users: {
-          where: { active: true }, // ✅ REMOVIDO role: 'barber'
+          where: { active: true },
           select: {
             id: true,
             name: true,
             avatar: true,
-            role: true, // ✅ ADICIONADO para debug
+            role: true,
           },
         },
       },
@@ -94,13 +122,49 @@ router.get('/barbershops/:id', async (req, res) => {
       return res.status(404).json({ error: 'Barbearia não encontrada' });
     }
 
+    // ✅ FIX: Estruturar a resposta com a config separada
+    const response = {
+      id: barbershop.id,
+      name: barbershop.name,
+      logo: barbershop.logo,
+      address: barbershop.address,
+      city: barbershop.city,
+      state: barbershop.state,
+      phone: barbershop.phone,
+      plan: barbershop.plan,
+      active: barbershop.active,
+      services: barbershop.services,
+      users: barbershop.users,
+      
+      // ✅ Agrupar configurações da landing page em um objeto "config"
+      config: {
+        heroImage: barbershop.heroImage,
+        heroTitle: barbershop.heroTitle,
+        heroSubtitle: barbershop.heroSubtitle,
+        description: barbershop.description,
+        galleryImages: barbershop.galleryImages,
+        businessHours: barbershop.businessHours,
+        instagramUrl: barbershop.instagramUrl,
+        facebookUrl: barbershop.facebookUrl,
+        whatsappNumber: barbershop.whatsappNumber,
+        youtubeUrl: barbershop.youtubeUrl,
+        primaryColor: barbershop.primaryColor,
+        secondaryColor: barbershop.secondaryColor,
+        showTeam: barbershop.showTeam,
+        showGallery: barbershop.showGallery,
+        showReviews: barbershop.showReviews,
+        allowOnlineBooking: barbershop.allowOnlineBooking,
+      }
+    };
+
     console.log(`✅ [PUBLIC] Barbearia encontrada:`, {
       name: barbershop.name,
       services: barbershop.services.length,
-      users: barbershop.users.length
+      users: barbershop.users.length,
+      hasConfig: !!barbershop.heroTitle || !!barbershop.description
     });
 
-    return res.json(barbershop);
+    return res.json(response);
   } catch (error) {
     console.error('❌ [PUBLIC] Erro ao buscar barbearia:', error);
     return res.status(500).json({ error: 'Erro ao buscar barbearia' });
