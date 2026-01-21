@@ -21,18 +21,18 @@ export async function adminMiddleware(req: Request, res: Response, next: NextFun
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    // Verificar se é admin/super-admin
-    // Você pode adicionar um campo "isSuperAdmin" na tabela users
-    // Ou verificar por email específico
+    // ✅ EMAIL ATUALIZADO DO SUPER ADMIN
     const ADMIN_EMAILS = [
-      'alex.bueno22@hotmail.com',
+      'alex.bueno22@hotmail.com',  // ✅ NOVO EMAIL
       'appbarberflow@gmail.com'
     ];
 
     if (!ADMIN_EMAILS.includes(user.email)) {
+      console.log('⛔ Acesso negado para:', user.email);
       return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
     }
 
+    console.log('✅ Super Admin autorizado:', user.email);
     next();
   } catch (error) {
     console.error('Erro no middleware admin:', error);
