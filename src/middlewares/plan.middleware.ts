@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { getPlanLimits } from '../config/plans';
 
-const prisma = new PrismaClient();
 
 // Middleware para verificar se o plano está ativo
 export const checkPlanActive = async (req: Request, res: Response, next: NextFunction) => {

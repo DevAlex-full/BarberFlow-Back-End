@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { PLANS, canChangeToPlan } from '../config/plans';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Listar planos disponíveis
 router.get('/plans', async (req, res) => {

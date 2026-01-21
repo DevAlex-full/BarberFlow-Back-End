@@ -2,10 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { sendPasswordResetEmail } from '../services/email.service';
 
-const prisma = new PrismaClient();
 
 interface ClientTokenPayload {
   id: string;

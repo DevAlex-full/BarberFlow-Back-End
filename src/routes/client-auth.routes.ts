@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -7,7 +7,6 @@ import passport from '../config/passport';
 import { forgotPassword, resetPassword } from '../middlewares/client-auth.middleware';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Interface para requisições autenticadas
 interface AuthRequest extends Request {

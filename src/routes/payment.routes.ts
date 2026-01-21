@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { preference } from '../config/mercadopago';
 import { PLANS } from '../config/plans';
@@ -7,7 +7,6 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendPaymentConfirmationEmail } from '../services/email.service';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Cliente Mercado Pago para buscar pagamentos
 const mpClient = new MercadoPagoConfig({

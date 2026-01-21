@@ -2,12 +2,11 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { sendEmail } from '../services/email.service';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ✅ EMAIL ATUALIZADO DO SUPER ADMIN
 const SUPER_ADMIN_EMAILS = [

@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { checkPlanActive, checkCustomerLimit } from '../middlewares/plan.middleware';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Listar clientes
 router.get('/', authMiddleware, checkPlanActive, async (req, res) => {

@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { upload } from '../config/multer';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Upload de logo da barbearia
 router.post('/barbershop-logo', authMiddleware, upload.single('logo'), async (req, res) => {

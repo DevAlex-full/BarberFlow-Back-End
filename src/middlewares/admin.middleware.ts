@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../config/prisma'; // ✅ IMPORT DO SINGLETON
 
 export async function adminMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
@@ -35,7 +33,10 @@ export async function adminMiddleware(req: Request, res: Response, next: NextFun
     console.log('✅ Super Admin autorizado:', user.email);
     next();
   } catch (error) {
-    console.error('Erro no middleware admin:', error);
-    return res.status(500).json({ error: 'Erro ao verificar permissões' });
+    console.error('❌ Erro no middleware admin:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao verificar permissões',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 }

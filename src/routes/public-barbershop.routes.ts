@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Buscar todas barbearias ativas (apenas as que pagam)
 router.get('/barbershops', async (req, res) => {

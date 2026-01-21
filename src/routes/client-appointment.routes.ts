@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { clientAuthMiddleware } from '../middlewares/client-auth.middleware';
 import { sendEmail, clientAppointmentConfirmationTemplate, clientCancellationTemplate } from '../services/email.service';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // ========== ROTAS GET (devem vir ANTES das rotas POST) ==========
 

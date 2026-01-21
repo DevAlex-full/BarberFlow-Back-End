@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { sendEmail, appointmentReminderTemplate, appointmentConfirmationTemplate } from '../services/email.service';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Enviar lembrete manual
 router.post('/send-reminder/:appointmentId', authMiddleware, async (req, res) => {

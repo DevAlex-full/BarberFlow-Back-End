@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { adminMiddleware } from '../middlewares/admin.middleware';
+import { prisma } from '../config/prisma'; // ✅ IMPORT DO SINGLETON
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Aplicar middlewares em todas as rotas
 router.use(authMiddleware);
@@ -105,8 +104,11 @@ router.get('/dashboard', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+    console.error('❌ Erro no dashboard admin:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao buscar estatísticas',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -184,8 +186,11 @@ router.get('/barbershops', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar barbearias' });
+    console.error('❌ Erro ao buscar barbearias:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao buscar barbearias',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -231,8 +236,11 @@ router.get('/barbershops/:id', async (req, res) => {
 
     return res.json(barbershop);
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar detalhes' });
+    console.error('❌ Erro ao buscar detalhes:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao buscar detalhes',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -287,8 +295,11 @@ router.get('/payments', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar pagamentos' });
+    console.error('❌ Erro ao buscar pagamentos:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao buscar pagamentos',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -323,8 +334,11 @@ router.get('/revenue-chart', async (req, res) => {
 
     return res.json(months);
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao gerar gráfico' });
+    console.error('❌ Erro ao gerar gráfico:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao gerar gráfico',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -343,8 +357,11 @@ router.get('/plans-distribution', async (req, res) => {
       }))
     );
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Erro ao buscar distribuição' });
+    console.error('❌ Erro ao buscar distribuição:', error);
+    return res.status(500).json({ 
+      error: 'Erro ao buscar distribuição',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
