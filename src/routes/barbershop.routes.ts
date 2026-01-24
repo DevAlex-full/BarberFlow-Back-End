@@ -17,7 +17,8 @@ router.get('/', authMiddleware, async (req, res) => {
             email: true,
             role: true,
             phone: true,
-            active: true
+            active: true,
+            avatar: true // ✅ ADICIONADO: Campo avatar
           }
         }
       }
