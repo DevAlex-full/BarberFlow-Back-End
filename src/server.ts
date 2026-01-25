@@ -18,6 +18,7 @@ import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
 import { startCronJobs } from './jobs';
+import userRoutes from './routes/user.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -86,6 +87,7 @@ app.use('/api/barbershop', barbershopRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
