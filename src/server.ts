@@ -6,6 +6,7 @@ import passport from './config/passport';
 import adminRoutes from './routes/admin.routes';
 import authRoutes from './routes/auth.routes';
 import barbershopRoutes from './routes/barbershop.routes';
+import barbershopLocationRoutes from './routes/barbershop-location.routes';
 import serviceRoutes from './routes/service.routes';
 import customerRoutes from './routes/custumer.routes';
 import notificationRoutes from './routes/notification.routes';
@@ -84,6 +85,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/barbershop', barbershopRoutes);
+app.use('/api/barbershop-location', barbershopLocationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/customers', customerRoutes);

@@ -72,6 +72,13 @@ model Barbershop {
   showReviews       Boolean  @default(true)
   allowOnlineBooking Boolean @default(true)
 
+  zipCode       String?
+  neighborhood  String?
+  number        String?
+  complement    String?
+  latitude      Float?
+  longitude     Float?
+
   users        User[]
   services     Service[]
   appointments Appointment[]
