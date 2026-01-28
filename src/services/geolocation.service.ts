@@ -29,12 +29,34 @@ interface GeocodeResult {
  */
 export class GeolocationService {
   private readonly BASE_URL = 'https://nominatim.openstreetmap.org';
+  private lastRequestTime = 0;
+  
+  /**
+   * Aguarda 1 segundo entre requisições (política do Nominatim)
+   */
+  private async respectRateLimit() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    const minInterval = 1000; // 1 segundo
+    
+    if (timeSinceLastRequest < minInterval) {
+      const waitTime = minInterval - timeSinceLastRequest;
+      console.log(`⏳ Aguardando ${waitTime}ms para respeitar rate limit...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
   
   /**
    * Converte endereço em coordenadas (lat/lng)
    */
-  async geocodeAddress(address: string): Promise<GeocodeResult | null> {
+  async geocodeAddress(address: string, retries = 3): Promise<GeocodeResult | null> {
     try {
+      await this.respectRateLimit();
+      
+      console.log('🔍 Geocoding:', address);
+      
       const response = await axios.get<NominatimResult[]>(`${this.BASE_URL}/search`, {
         params: {
           q: address,
@@ -46,13 +68,29 @@ export class GeolocationService {
         headers: {
           'User-Agent': 'BarberFlow/1.0 (https://barberflow.com)', // Nominatim exige User-Agent
         },
+        timeout: 10000, // 10 segundos
       });
 
       if (!response.data || response.data.length === 0) {
+        console.log('❌ Nenhum resultado encontrado para:', address);
+        
+        // Retry se ainda houver tentativas
+        if (retries > 0) {
+          console.log(`🔄 Tentando novamente... (${retries} tentativas restantes)`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2s
+          return this.geocodeAddress(address, retries - 1);
+        }
+        
         return null;
       }
 
       const result = response.data[0];
+      
+      console.log('✅ Coordenadas encontradas:', {
+        lat: result.lat,
+        lon: result.lon,
+        display_name: result.display_name
+      });
 
       return {
         latitude: parseFloat(result.lat),
@@ -62,8 +100,16 @@ export class GeolocationService {
         city: result.address?.city,
         state: result.address?.state,
       };
-    } catch (error) {
-      console.error('❌ Erro ao fazer geocoding:', error);
+    } catch (error: any) {
+      console.error('❌ Erro ao fazer geocoding:', error.message);
+      
+      // Retry em caso de erro de rede
+      if (retries > 0 && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
+        console.log(`🔄 Erro de rede, tentando novamente... (${retries} tentativas restantes)`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return this.geocodeAddress(address, retries - 1);
+      }
+      
       return null;
     }
   }
@@ -73,6 +119,8 @@ export class GeolocationService {
    */
   async reverseGeocode(lat: number, lon: number): Promise<GeocodeResult | null> {
     try {
+      await this.respectRateLimit();
+      
       const response = await axios.get<NominatimResult>(`${this.BASE_URL}/reverse`, {
         params: {
           lat,
@@ -83,6 +131,7 @@ export class GeolocationService {
         headers: {
           'User-Agent': 'BarberFlow/1.0',
         },
+        timeout: 10000,
       });
 
       if (!response.data) {
