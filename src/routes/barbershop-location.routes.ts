@@ -164,6 +164,7 @@ router.put('/update-location', authMiddleware, isAdmin, async (req, res) => {
       neighborhood,
       city,
       state
+      // ✅ NÃO RECEBE latitude e longitude do front-end!
     } = req.body;
 
     const barbershopId = req.user!.barbershopId!;
@@ -175,8 +176,10 @@ router.put('/update-location', authMiddleware, isAdmin, async (req, res) => {
       });
     }
 
-    // Montar endereço completo para geocoding
+    // ✅ CORREÇÃO: Montar endereço completo para geocoding
     const fullAddress = `${address}${number ? ', ' + number : ''}, ${neighborhood}, ${city}, ${state}, Brasil`;
+
+    console.log('🔍 Fazendo geocoding para:', fullAddress);
 
     // Fazer geocoding
     const geocodeResult = await geolocationService.geocodeAddress(fullAddress);
@@ -187,14 +190,16 @@ router.put('/update-location', authMiddleware, isAdmin, async (req, res) => {
       });
     }
 
+    console.log('✅ Coordenadas encontradas:', geocodeResult.latitude, geocodeResult.longitude);
+
     // Atualizar barbearia
     const barbershop = await prisma.barbershop.update({
       where: { id: barbershopId },
       data: {
         zipCode: zipCode.replace(/\D/g, ''),
         address,
-        number,
-        complement,
+        number: number || null,
+        complement: complement || null,
         neighborhood,
         city,
         state,
@@ -221,7 +226,7 @@ router.put('/update-location', authMiddleware, isAdmin, async (req, res) => {
       barbershop
     });
   } catch (error) {
-    console.error('Erro ao atualizar localização:', error);
+    console.error('❌ Erro ao atualizar localização:', error);
     return res.status(500).json({ error: 'Erro ao atualizar localização' });
   }
 });
