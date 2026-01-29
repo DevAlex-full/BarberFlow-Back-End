@@ -9,6 +9,8 @@ interface NominatimResult {
   address?: {
     postcode?: string;
     city?: string;
+    town?: string;
+    municipality?: string;
     state?: string;
     country?: string;
   };
@@ -50,6 +52,7 @@ export class GeolocationService {
   
   /**
    * Converte endereço em coordenadas (lat/lng)
+   * ✅ MELHORADO: Tenta múltiplas variações do endereço
    */
   async geocodeAddress(address: string, retries = 3): Promise<GeocodeResult | null> {
     try {
@@ -57,49 +60,58 @@ export class GeolocationService {
       
       console.log('🔍 Geocoding:', address);
       
-      const response = await axios.get<NominatimResult[]>(`${this.BASE_URL}/search`, {
-        params: {
-          q: address,
-          format: 'json',
-          addressdetails: 1,
-          limit: 1,
-          countrycodes: 'br', // Apenas Brasil
-        },
-        headers: {
-          'User-Agent': 'BarberFlow/1.0 (https://barberflow.com)', // Nominatim exige User-Agent
-        },
-        timeout: 10000, // 10 segundos
-      });
+      // ✅ TENTATIVA 1: Endereço completo
+      let result = await this.tryGeocode(address);
+      
+      // ✅ TENTATIVA 2: Sem o número (caso o número seja problemático)
+      if (!result) {
+        const addressWithoutNumber = address.replace(/,\s*\d+\s*,/, ',');
+        if (addressWithoutNumber !== address) {
+          console.log('🔄 Tentando sem número:', addressWithoutNumber);
+          result = await this.tryGeocode(addressWithoutNumber);
+        }
+      }
+      
+      // ✅ TENTATIVA 3: Apenas rua + bairro + estado
+      if (!result) {
+        const parts = address.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+          const simplifiedAddress = `${parts[0]}, ${parts[parts.length - 2]}, Brasil`;
+          console.log('🔄 Tentando endereço simplificado:', simplifiedAddress);
+          result = await this.tryGeocode(simplifiedAddress);
+        }
+      }
+      
+      // ✅ TENTATIVA 4: Apenas bairro + cidade + estado
+      if (!result) {
+        const parts = address.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+          const locationOnly = `${parts[1]}, ${parts[2]}, ${parts[3] || 'SP'}, Brasil`;
+          console.log('🔄 Tentando apenas localização:', locationOnly);
+          result = await this.tryGeocode(locationOnly);
+        }
+      }
 
-      if (!response.data || response.data.length === 0) {
-        console.log('❌ Nenhum resultado encontrado para:', address);
+      if (!result) {
+        console.log('❌ Nenhum resultado encontrado após todas as tentativas');
         
         // Retry se ainda houver tentativas
         if (retries > 0) {
           console.log(`🔄 Tentando novamente... (${retries} tentativas restantes)`);
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2s
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return this.geocodeAddress(address, retries - 1);
         }
         
         return null;
       }
 
-      const result = response.data[0];
-      
       console.log('✅ Coordenadas encontradas:', {
-        lat: result.lat,
-        lon: result.lon,
-        display_name: result.display_name
+        lat: result.latitude,
+        lon: result.longitude,
+        address: result.fullAddress
       });
 
-      return {
-        latitude: parseFloat(result.lat),
-        longitude: parseFloat(result.lon),
-        fullAddress: result.display_name,
-        cep: result.address?.postcode,
-        city: result.address?.city,
-        state: result.address?.state,
-      };
+      return result;
     } catch (error: any) {
       console.error('❌ Erro ao fazer geocoding:', error.message);
       
@@ -110,6 +122,47 @@ export class GeolocationService {
         return this.geocodeAddress(address, retries - 1);
       }
       
+      return null;
+    }
+  }
+
+  /**
+   * Tenta fazer geocode com um endereço específico
+   */
+  private async tryGeocode(address: string): Promise<GeocodeResult | null> {
+    try {
+      await this.respectRateLimit();
+      
+      const response = await axios.get<NominatimResult[]>(`${this.BASE_URL}/search`, {
+        params: {
+          q: address,
+          format: 'json',
+          addressdetails: 1,
+          limit: 1,
+          countrycodes: 'br',
+        },
+        headers: {
+          'User-Agent': 'BarberFlow/1.0 (https://barberflow.com)',
+        },
+        timeout: 10000,
+      });
+
+      if (!response.data || response.data.length === 0) {
+        return null;
+      }
+
+      const result = response.data[0];
+      
+      return {
+        latitude: parseFloat(result.lat),
+        longitude: parseFloat(result.lon),
+        fullAddress: result.display_name,
+        cep: result.address?.postcode,
+        city: result.address?.city || result.address?.town || result.address?.municipality,
+        state: result.address?.state,
+      };
+    } catch (error) {
+      console.error('❌ Erro na tentativa de geocoding:', error);
       return null;
     }
   }
@@ -145,7 +198,7 @@ export class GeolocationService {
         longitude: parseFloat(result.lon),
         fullAddress: result.display_name,
         cep: result.address?.postcode,
-        city: result.address?.city,
+        city: result.address?.city || result.address?.town || result.address?.municipality,
         state: result.address?.state,
       };
     } catch (error) {
