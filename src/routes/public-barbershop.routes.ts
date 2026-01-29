@@ -22,7 +22,7 @@ router.get('/barbershops', async (req, res) => {
     if (city) {
       where.city = { contains: city as string, mode: 'insensitive' };
     }
-    
+
     if (state) {
       where.state = state;
     }
@@ -60,9 +60,9 @@ router.get('/barbershops/:id', async (req, res) => {
     console.log(`🔍 [PUBLIC] Buscando barbearia: ${id}`);
 
     const barbershop = await prisma.barbershop.findUnique({
-      where: { 
-        id, 
-        active: true 
+      where: {
+        id,
+        active: true
       },
       select: {
         // ✅ Dados básicos
@@ -75,7 +75,7 @@ router.get('/barbershops/:id', async (req, res) => {
         phone: true,
         plan: true,
         active: true,
-        
+
         // ✅ LOCALIZAÇÃO COMPLETA (ADICIONADO - FIX DO BUG!)
         zipCode: true,
         neighborhood: true,
@@ -83,7 +83,7 @@ router.get('/barbershops/:id', async (req, res) => {
         complement: true,
         latitude: true,
         longitude: true,
-        
+
         // ✅ CONFIGURAÇÕES DA LANDING PAGE
         heroImage: true,
         heroTitle: true,
@@ -101,7 +101,7 @@ router.get('/barbershops/:id', async (req, res) => {
         showGallery: true,
         showReviews: true,
         allowOnlineBooking: true,
-        
+
         // ✅ Serviços e equipe
         services: {
           where: { active: true },
@@ -141,7 +141,7 @@ router.get('/barbershops/:id', async (req, res) => {
       phone: barbershop.phone,
       plan: barbershop.plan,
       active: barbershop.active,
-      
+
       // ✅ LOCALIZAÇÃO COMPLETA (ADICIONADO - FIX DO BUG!)
       zipCode: barbershop.zipCode,
       neighborhood: barbershop.neighborhood,
@@ -149,10 +149,10 @@ router.get('/barbershops/:id', async (req, res) => {
       complement: barbershop.complement,
       latitude: barbershop.latitude,
       longitude: barbershop.longitude,
-      
+
       services: barbershop.services,
       users: barbershop.users,
-      
+
       // ✅ Agrupar configurações da landing page em um objeto "config"
       config: {
         heroImage: barbershop.heroImage,
@@ -214,7 +214,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     // Buscar agendamentos do dia
     const startDate = new Date(date as string);
     startDate.setHours(0, 0, 0, 0);
-    
+
     const endDate = new Date(date as string);
     endDate.setHours(23, 59, 59, 999);
 
@@ -236,19 +236,48 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
 
     console.log(`📅 [PUBLIC] ${appointments.length} agendamentos existentes nesta data`);
 
-    // Gerar horários disponíveis (9h às 18h, intervalos de 30min)
-    const availableTimes: string[] = [];
-    const workStart = 9;
-    const workEnd = 18;
-    const now = new Date();
+    // ✅ CORREÇÃO: Buscar businessHours da barbearia
+    const barbershop = await prisma.barbershop.findUnique({
+      where: { id },
+      select: { businessHours: true }
+    });
 
-    for (let hour = workStart; hour < workEnd; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
+    // Pegar horário do dia da semana selecionado
+    const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][startDate.getDay()];
+    const businessHours = barbershop?.businessHours as any || {};
+    const dayHours = businessHours[dayOfWeek] || '09:00-18:00';
+
+    // Se está fechado neste dia, retornar array vazio
+    if (dayHours.toLowerCase() === 'fechado' || !dayHours) {
+      console.log(`🚫 [PUBLIC] Barbearia fechada em ${dayOfWeek}`);
+      return res.json([]);
+    }
+
+    // Parse dos horários configurados
+    const [startTime, endTime] = dayHours.split('-');
+    const [workStartHour, workStartMin] = startTime.split(':').map(Number);
+    const [workEndHour, workEndMin] = endTime.split(':').map(Number);
+
+    console.log(`⏰ [PUBLIC] Horários de ${dayOfWeek}: ${startTime} até ${endTime}`);
+
+    // Gerar horários disponíveis
+    const availableTimes: string[] = [];
+
+    // ✅ CORREÇÃO: Usar timezone do Brasil (GMT-3)
+    const now = new Date();
+    const nowBrasil = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+
+    // Gerar slots de 30 em 30 minutos
+    for (let hour = workStartHour; hour < workEndHour || (hour === workEndHour && workStartMin === 0); hour++) {
+      const startMinute = (hour === workStartHour) ? workStartMin : 0;
+      const endMinute = (hour === workEndHour) ? workEndMin : 60;
+
+      for (let minute = startMinute; minute < endMinute; minute += 30) {
         const timeSlot = new Date(startDate);
         timeSlot.setHours(hour, minute, 0, 0);
 
-        // Não permitir horários no passado
-        if (timeSlot <= now) continue;
+        // ✅ CORREÇÃO: Não permitir horários no passado (comparar com hora do Brasil)
+        if (timeSlot <= nowBrasil) continue;
 
         // Verificar se há conflito com agendamentos existentes
         const hasConflict = appointments.some((apt) => {
