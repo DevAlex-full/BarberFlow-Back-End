@@ -52,7 +52,7 @@ router.get('/barbershops', async (req, res) => {
   }
 });
 
-// ✅ FIX: Buscar detalhes de uma barbearia específica COM CONFIG
+// ✅ CORRIGIDO: Buscar detalhes de uma barbearia específica COM CONFIG E LOCALIZAÇÃO
 router.get('/barbershops/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -76,7 +76,15 @@ router.get('/barbershops/:id', async (req, res) => {
         plan: true,
         active: true,
         
-        // ✅ CONFIGURAÇÕES DA LANDING PAGE (ADICIONADO)
+        // ✅ LOCALIZAÇÃO COMPLETA (ADICIONADO - FIX DO BUG!)
+        zipCode: true,
+        neighborhood: true,
+        number: true,
+        complement: true,
+        latitude: true,
+        longitude: true,
+        
+        // ✅ CONFIGURAÇÕES DA LANDING PAGE
         heroImage: true,
         heroTitle: true,
         heroSubtitle: true,
@@ -122,7 +130,7 @@ router.get('/barbershops/:id', async (req, res) => {
       return res.status(404).json({ error: 'Barbearia não encontrada' });
     }
 
-    // ✅ FIX: Estruturar a resposta com a config separada
+    // ✅ Estruturar a resposta com todos os dados
     const response = {
       id: barbershop.id,
       name: barbershop.name,
@@ -133,6 +141,15 @@ router.get('/barbershops/:id', async (req, res) => {
       phone: barbershop.phone,
       plan: barbershop.plan,
       active: barbershop.active,
+      
+      // ✅ LOCALIZAÇÃO COMPLETA (ADICIONADO - FIX DO BUG!)
+      zipCode: barbershop.zipCode,
+      neighborhood: barbershop.neighborhood,
+      number: barbershop.number,
+      complement: barbershop.complement,
+      latitude: barbershop.latitude,
+      longitude: barbershop.longitude,
+      
       services: barbershop.services,
       users: barbershop.users,
       
@@ -161,7 +178,8 @@ router.get('/barbershops/:id', async (req, res) => {
       name: barbershop.name,
       services: barbershop.services.length,
       users: barbershop.users.length,
-      hasConfig: !!barbershop.heroTitle || !!barbershop.description
+      hasConfig: !!barbershop.heroTitle || !!barbershop.description,
+      hasLocation: !!barbershop.latitude && !!barbershop.longitude, // LOG ADICIONADO
     });
 
     return res.json(response);
