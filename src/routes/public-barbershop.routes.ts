@@ -236,50 +236,50 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
 
     console.log(`📅 [PUBLIC] ${appointments.length} agendamentos existentes nesta data`);
 
-    // ✅ CORREÇÃO: Buscar businessHours da barbearia
+    // ✅ Buscar businessHours
     const barbershop = await prisma.barbershop.findUnique({
       where: { id },
       select: { businessHours: true }
     });
 
-    // Pegar horário do dia da semana selecionado
     const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][startDate.getDay()];
     const businessHours = barbershop?.businessHours as any || {};
     const dayHours = businessHours[dayOfWeek] || '09:00-18:00';
 
-    // Se está fechado neste dia, retornar array vazio
     if (dayHours.toLowerCase() === 'fechado' || !dayHours) {
       console.log(`🚫 [PUBLIC] Barbearia fechada em ${dayOfWeek}`);
       return res.json([]);
     }
 
-    // Parse dos horários configurados
     const [startTime, endTime] = dayHours.split('-');
     const [workStartHour, workStartMin] = startTime.split(':').map(Number);
     const [workEndHour, workEndMin] = endTime.split(':').map(Number);
 
     console.log(`⏰ [PUBLIC] Horários de ${dayOfWeek}: ${startTime} até ${endTime}`);
 
-    // Gerar horários disponíveis
     const availableTimes: string[] = [];
-
-    // ✅ CORREÇÃO: Usar timezone do Brasil (GMT-3)
     const now = new Date();
     const nowBrasil = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
 
-    // Gerar slots de 30 em 30 minutos
-    for (let hour = workStartHour; hour < workEndHour || (hour === workEndHour && workStartMin === 0); hour++) {
-      const startMinute = (hour === workStartHour) ? workStartMin : 0;
-      const endMinute = (hour === workEndHour) ? workEndMin : 60;
+    // ✅ Calcular início e fim em minutos (desde meia-noite)
+    const startMinutes = workStartHour * 60 + workStartMin;
+    const endMinutes = workEndHour * 60 + workEndMin;
 
-      for (let minute = startMinute; minute < endMinute; minute += 30) {
+    // ✅ Loop de 0 a 23 horas
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const slotMinutes = hour * 60 + minute;
+
+        // ✅ Verificar se está dentro do horário de funcionamento
+        if (slotMinutes < startMinutes || slotMinutes >= endMinutes) continue;
+
         const timeSlot = new Date(startDate);
         timeSlot.setHours(hour, minute, 0, 0);
 
-        // ✅ CORREÇÃO: Não permitir horários no passado (comparar com hora do Brasil)
+        // ✅ Não permitir horários no passado
         if (timeSlot <= nowBrasil) continue;
 
-        // Verificar se há conflito com agendamentos existentes
+        // ✅ Verificar conflitos com agendamentos existentes
         const hasConflict = appointments.some((apt) => {
           const aptStart = new Date(apt.date);
           const aptEnd = new Date(aptStart.getTime() + apt.service.duration * 60000);
@@ -302,7 +302,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
 
     return res.json(availableTimes);
   } catch (error) {
-    console.error('❌ [PUBLIC] Erro ao buscar horários:', error);
+    console.error('❌ [PUBLIC] Erro ao buscar horários disponíveis:', error);
     return res.status(500).json({ error: 'Erro ao buscar horários disponíveis' });
   }
 });
