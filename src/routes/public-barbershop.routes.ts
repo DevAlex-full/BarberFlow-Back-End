@@ -179,7 +179,7 @@ router.get('/barbershops/:id', async (req, res) => {
       services: barbershop.services.length,
       users: barbershop.users.length,
       hasConfig: !!barbershop.heroTitle || !!barbershop.description,
-      hasLocation: !!barbershop.latitude && !!barbershop.longitude, // LOG ADICIONADO
+      hasLocation: !!barbershop.latitude && !!barbershop.longitude,
     });
 
     return res.json(response);
@@ -189,7 +189,7 @@ router.get('/barbershops/:id', async (req, res) => {
   }
 });
 
-// Buscar horários disponíveis
+// ✅ FIX DEFINITIVO: Buscar horários disponíveis com TIMEZONE CORRETO
 router.get('/barbershops/:id/available-times', async (req, res) => {
   try {
     const { id } = req.params;
@@ -211,12 +211,21 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
       return res.status(404).json({ error: 'Serviço não encontrado' });
     }
 
-    // Buscar agendamentos do dia
-    const startDate = new Date(date as string);
-    startDate.setHours(0, 0, 0, 0);
+    // ✅ CORREÇÃO CRÍTICA: Criar data no horário de Brasília (UTC-3)
+    // Formato recebido: "2026-01-31" (YYYY-MM-DD)
+    const [year, month, day] = (date as string).split('-').map(Number);
+    
+    // ✅ Criar data às 00:00:00 no horário LOCAL de Brasília
+    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-    const endDate = new Date(date as string);
-    endDate.setHours(23, 59, 59, 999);
+    console.log(`📅 [PUBLIC] Data processada:`, {
+      recebida: date,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      startLocal: startDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+      endLocal: endDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    });
 
     const appointments = await prisma.appointment.findMany({
       where: {
@@ -258,27 +267,25 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     console.log(`⏰ [PUBLIC] Horários de ${dayOfWeek}: ${startTime} até ${endTime}`);
 
     const availableTimes: string[] = [];
+    
+    // ✅ CORREÇÃO: Obter hora atual no horário de Brasília
     const now = new Date();
     const nowBrasil = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
 
-    // ✅ Calcular início e fim em minutos (desde meia-noite)
-    const startMinutes = workStartHour * 60 + workStartMin;
-    const endMinutes = workEndHour * 60 + workEndMin;
+    // ✅ CORREÇÃO CRÍTICA: Loop apenas dentro do horário de funcionamento
+    // Começar do horário de abertura e ir até o horário de fechamento
+    let currentHour = workStartHour;
+    let currentMinute = workStartMin;
 
-    // ✅ Loop de 0 a 23 horas
-    for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const slotMinutes = hour * 60 + minute;
+    while (
+      currentHour < workEndHour || 
+      (currentHour === workEndHour && currentMinute < workEndMin)
+    ) {
+      // ✅ Criar objeto Date no horário LOCAL de Brasília
+      const timeSlot = new Date(year, month - 1, day, currentHour, currentMinute, 0, 0);
 
-        // ✅ Verificar se está dentro do horário de funcionamento
-        if (slotMinutes < startMinutes || slotMinutes >= endMinutes) continue;
-
-        const timeSlot = new Date(startDate);
-        timeSlot.setHours(hour, minute, 0, 0);
-
-        // ✅ Não permitir horários no passado
-        if (timeSlot <= nowBrasil) continue;
-
+      // ✅ Não permitir horários no passado
+      if (timeSlot > nowBrasil) {
         // ✅ Verificar conflitos com agendamentos existentes
         const hasConflict = appointments.some((apt) => {
           const aptStart = new Date(apt.date);
@@ -296,9 +303,24 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
           availableTimes.push(timeSlot.toISOString());
         }
       }
+
+      // ✅ Incrementar 30 minutos
+      currentMinute += 30;
+      if (currentMinute >= 60) {
+        currentMinute = 0;
+        currentHour += 1;
+      }
     }
 
     console.log(`✅ [PUBLIC] ${availableTimes.length} horários disponíveis`);
+    
+    // ✅ LOG: Mostrar os primeiros e últimos horários para debug
+    if (availableTimes.length > 0) {
+      const firstTime = new Date(availableTimes[0]).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const lastTime = new Date(availableTimes[availableTimes.length - 1]).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      console.log(`⏰ [PUBLIC] Primeiro horário: ${firstTime}`);
+      console.log(`⏰ [PUBLIC] Último horário: ${lastTime}`);
+    }
 
     return res.json(availableTimes);
   } catch (error) {
