@@ -52,7 +52,14 @@ router.post('/register', async (req, res) => {
         password: hashedPassword,
         phone,
         role: 'ADMIN',
-        barbershopId: barbershop.id
+        barbershopId: barbershop.id,
+        // ✅ CAMPOS DE TERMOS (LGPD) - ADICIONADO
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        privacyAccepted: true,
+        privacyAcceptedAt: new Date(),
+        termsVersion: 'v1.0',
+        privacyVersion: 'v1.0',
       }
     });
 
@@ -90,6 +97,7 @@ router.post('/login', async (req, res) => {
 
     console.log('🔐 Tentativa de login:', email);
 
+    // ✅ NÃO USAR SELECT - Deixa buscar TODOS os campos automaticamente
     const user = await prisma.user.findUnique({
       where: { email },
       include: { barbershop: true }
