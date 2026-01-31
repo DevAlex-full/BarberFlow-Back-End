@@ -106,7 +106,14 @@ router.get(
 // Cadastro de cliente
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, termsAccepted, privacyAccepted } = req.body;
+    
+    // ✅ VALIDAÇÃO DE TERMOS
+    if (!termsAccepted || !privacyAccepted) {
+      return res.status(400).json({ 
+        error: 'Você deve aceitar os Termos de Uso e Política de Privacidade' 
+      });
+    }
 
     // Validações básicas
     if (!name || !email || !phone || !password) {
@@ -136,6 +143,12 @@ router.post('/register', async (req, res) => {
         email,
         phone,
         password: hashedPassword,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        privacyAccepted: true,
+        privacyAcceptedAt: new Date(),
+        termsVersion: 'v1.0',
+        privacyVersion: 'v1.0',
       },
       select: {
         id: true,
@@ -187,13 +200,20 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Conta desativada' });
     }
 
-    // Verificar senha
-    const validPassword = await bcrypt.compare(password, client.password);
+    // Verificar senha (só se tiver password - OAuth pode não ter)
+    if (client.password) {
+      const validPassword = await bcrypt.compare(password, client.password);
 
-    console.log('🔑 Senha válida:', validPassword ? 'SIM' : 'NÃO'); // LOG
+      console.log('🔑 Senha válida:', validPassword ? 'SIM' : 'NÃO'); // LOG
 
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Email ou senha inválidos' });
+      if (!validPassword) {
+        return res.status(401).json({ error: 'Email ou senha inválidos' });
+      }
+    } else {
+      // Cliente OAuth tentando fazer login tradicional
+      return res.status(401).json({ 
+        error: 'Esta conta foi criada com Google/Facebook. Use o botão correspondente para entrar.' 
+      });
     }
 
     // Gerar token

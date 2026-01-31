@@ -23,6 +23,14 @@ model User {
   resetPasswordToken   String?   @unique
   resetPasswordExpires DateTime?
 
+  // ✅ CAMPOS DE ACEITAÇÃO DE TERMOS (LGPD) - BARBEIROS
+  termsAccepted      Boolean   @default(false)
+  termsAcceptedAt    DateTime?
+  privacyAccepted    Boolean   @default(false)
+  privacyAcceptedAt  DateTime?
+  termsVersion       String?   // ex: "v1.0"
+  privacyVersion     String?   // ex: "v1.0"
+
   barbershop   Barbershop? @relation(fields: [barbershopId], references: [id])
   barbershopId String?
 
@@ -180,6 +188,14 @@ model Client {
 
   resetPasswordToken   String?   @unique
   resetPasswordExpires DateTime?
+
+  // ✅ CAMPOS DE ACEITAÇÃO DE TERMOS (LGPD) - CLIENTES
+  termsAccepted      Boolean   @default(false)
+  termsAcceptedAt    DateTime?
+  privacyAccepted    Boolean   @default(false)
+  privacyAcceptedAt  DateTime?
+  termsVersion       String?   // ex: "v1.0"
+  privacyVersion     String?   // ex: "v1.0"
 
   appointments Appointment[]
   
