@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma';
 import { authMiddleware, isAdmin } from '../middlewares/auth.middleware';
+import bcrypt from 'bcrypt';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/', authMiddleware, async (req, res) => {
             role: true,
             phone: true,
             active: true,
-            avatar: true // ✅ ADICIONADO: Campo avatar
+            avatar: true
           }
         }
       }
@@ -35,20 +36,69 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Atualizar dados da barbearia
+// 🆕 Atualizar dados da barbearia (ATUALIZADO COM NOVOS CAMPOS)
 router.put('/', authMiddleware, isAdmin, async (req, res) => {
   try {
-    const { name, phone, address, city, state } = req.body;
+    const { name, phone, address, city, state, zipCode, cnpj, description } = req.body;
 
     const barbershop = await prisma.barbershop.update({
       where: { id: req.user!.barbershopId! },
-      data: { name, phone, address, city, state }
+      data: { 
+        name, 
+        phone, 
+        address, 
+        city, 
+        state,
+        zipCode,
+        cnpj,
+        description
+      }
     });
 
     return res.json(barbershop);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Erro ao atualizar barbearia' });
+  }
+});
+
+// 🆕 NOVO: Excluir conta da barbearia (FASE 3)
+router.delete('/', authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const { barbershopId, id: userId } = req.user!;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Senha é obrigatória' });
+    }
+
+    // 1. Verificar senha do usuário
+    const user = await prisma.user.findUnique({ 
+      where: { id: userId } 
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Senha incorreta' });
+    }
+
+    // 2. Excluir barbearia (Prisma vai excluir em cascata)
+    await prisma.barbershop.delete({
+      where: { id: barbershopId }
+    });
+
+    return res.json({ 
+      message: 'Conta excluída com sucesso',
+      deletedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erro ao excluir conta:', error);
+    return res.status(500).json({ error: 'Erro ao excluir conta' });
   }
 });
 

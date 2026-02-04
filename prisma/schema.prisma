@@ -31,7 +31,10 @@ model User {
   termsVersion       String?   // ex: "v1.0"
   privacyVersion     String?   // ex: "v1.0"
 
-  barbershop   Barbershop? @relation(fields: [barbershopId], references: [id])
+  // ✅ NOVO: Preferências do usuário (notificações, tema, etc)
+  preferences Json? @default("{\"emailNotifications\":true,\"smsNotifications\":false,\"whatsappNotifications\":true,\"theme\":\"light\"}")
+
+  barbershop   Barbershop? @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String?
 
   appointments    Appointment[]
@@ -62,11 +65,15 @@ model Barbershop {
   maxBarbers   Int @default(1)
   maxCustomers Int @default(100)
 
-  // ===== CAMPOS DA LANDING PAGE =====
+  // 🆕 NOVOS CAMPOS DA FASE 3 (Configurações)
+  zipCode     String?
+  cnpj        String?
+  description String? @db.Text
+
+  // ===== CAMPOS DA LANDING PAGE (FASE 2) =====
   heroImage         String?
   heroTitle         String?
   heroSubtitle      String?
-  description       String?
   galleryImages     String[] @default([])
   businessHours     Json?
   instagramUrl      String?
@@ -80,7 +87,6 @@ model Barbershop {
   showReviews       Boolean  @default(true)
   allowOnlineBooking Boolean @default(true)
 
-  zipCode       String?
   neighborhood  String?
   number        String?
   complement    String?
@@ -110,7 +116,7 @@ model Subscription {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  barbershop Barbershop @relation(fields: [barbershopId], references: [id])
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   payments   Payment[]
 
   @@map("subscriptions")
@@ -127,7 +133,7 @@ model Payment {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@map("payments")
 }
@@ -142,10 +148,10 @@ model Service {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  barbershop   Barbershop @relation(fields: [barbershopId], references: [id])
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String
 
-  barber   User?   @relation(fields: [barberId], references: [id])
+  barber   User?   @relation(fields: [barberId], references: [id], onDelete: SetNull)
   barberId String?
 
   appointments Appointment[]
@@ -164,7 +170,7 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  barbershop   Barbershop @relation(fields: [barbershopId], references: [id])
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String
 
   appointments Appointment[]
@@ -211,19 +217,19 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  barbershop   Barbershop @relation(fields: [barbershopId], references: [id])
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String
 
-  customer   Customer? @relation(fields: [customerId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerId String?
 
-  client     Client?   @relation(fields: [clientId], references: [id])
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientId   String?
 
-  barber   User @relation(fields: [barberId], references: [id])
+  barber   User @relation(fields: [barberId], references: [id], onDelete: Cascade)
   barberId String
 
-  service   Service @relation(fields: [serviceId], references: [id])
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   serviceId String
   
   @@map("appointments")

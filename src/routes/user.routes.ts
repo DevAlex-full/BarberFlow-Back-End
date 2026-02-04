@@ -6,6 +6,175 @@ import bcrypt from 'bcryptjs';
 
 const router = Router();
 
+// ========================================
+// 🆕 NOVAS ROTAS: CONFIGURAÇÕES DE CONTA
+// ========================================
+
+// ✅ GET /api/users/profile - Buscar dados do usuário logado
+router.get('/profile', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        avatar: true,
+        barbershop: {
+          select: {
+            id: true,
+            name: true,
+            plan: true,
+          }
+        },
+        preferences: true,
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    return res.json(user);
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error);
+    return res.status(500).json({ error: 'Erro ao buscar dados do usuário' });
+  }
+});
+
+// ✅ PUT /api/users/profile - Atualizar dados pessoais
+router.put('/profile', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { name, email, phone } = req.body;
+
+    // Validações
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Nome e email são obrigatórios' });
+    }
+
+    // Verificar se email já existe (se mudou)
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email,
+        id: { not: userId }
+      }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Este email já está em uso' });
+    }
+
+    // Atualizar usuário
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name,
+        email,
+        phone,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+      }
+    });
+
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error('Erro ao atualizar perfil:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar dados' });
+  }
+});
+
+// ✅ PUT /api/users/change-password - Alterar senha
+router.put('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { currentPassword, newPassword } = req.body;
+
+    // Validações
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres' });
+    }
+
+    // Buscar usuário com senha
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Verificar senha atual
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Senha atual incorreta' });
+    }
+
+    // Hash da nova senha
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Atualizar senha
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword }
+    });
+
+    return res.json({ message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao alterar senha:', error);
+    return res.status(500).json({ error: 'Erro ao alterar senha' });
+  }
+});
+
+// ✅ PUT /api/users/preferences - Salvar preferências
+router.put('/preferences', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { emailNotifications, smsNotifications, whatsappNotifications, theme } = req.body;
+
+    // Atualizar preferências
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        preferences: {
+          emailNotifications: emailNotifications ?? true,
+          smsNotifications: smsNotifications ?? false,
+          whatsappNotifications: whatsappNotifications ?? true,
+          theme: theme || 'light',
+        }
+      },
+      select: {
+        id: true,
+        preferences: true,
+      }
+    });
+
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error('Erro ao salvar preferências:', error);
+    return res.status(500).json({ error: 'Erro ao salvar preferências' });
+  }
+});
+
+// ========================================
+// ⚙️ ROTAS EXISTENTES (GESTÃO DE BARBEIROS)
+// ========================================
+
 // Listar usuários (barbeiros e admins da barbearia)
 router.get('/', authMiddleware, async (req, res) => {
   try {
