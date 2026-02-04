@@ -21,6 +21,7 @@ import clientAppointmentRoutes from './routes/client-appointment.routes';
 import { startCronJobs } from './jobs';
 import userRoutes from './routes/user.routes';
 import reportsRoutes from './routes/reports.routes';
+import analyticsRoutes from './routes/analytics.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -101,6 +102,7 @@ app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/appointments', clientAppointmentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
