@@ -39,6 +39,7 @@ model User {
 
   appointments    Appointment[]
   servicesProvided Service[]
+  commissions     Commission[] // ✅ NOVO: Comissões do barbeiro
   
   @@map("users")
 }
@@ -98,8 +99,67 @@ model Barbershop {
   appointments Appointment[]
   customers    Customer[]
   subscriptions Subscription[]
+  transactions  Transaction[] // ✅ NOVO: Transações financeiras
+  commissions   Commission[]  // ✅ NOVO: Comissões
+  goals         Goal[]        // ✅ NOVO: Metas
   
   @@map("barbershops")
+}
+
+// ✅ NOVO: Model de Transações Financeiras (Receitas e Despesas)
+model Transaction {
+  id            String   @id @default(uuid())
+  barbershopId  String
+  type          String   // 'income' ou 'expense'
+  category      String   // 'service', 'product', 'salary', 'rent', 'commission', 'other'
+  description   String
+  amount        Decimal  @db.Decimal(10, 2)
+  date          DateTime
+  paymentMethod String?  // 'cash', 'pix', 'credit', 'debit'
+  status        String   @default("completed") // 'completed', 'pending', 'cancelled'
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+// ✅ NOVO: Model de Comissões dos Barbeiros
+model Commission {
+  id             String   @id @default(uuid())
+  barberId       String
+  barbershopId   String
+  percentage     Float    // 30, 40, 50, etc
+  amount         Decimal  @db.Decimal(10, 2)
+  referenceMonth DateTime // Mês/ano de referência
+  status         String   @default("pending") // 'pending', 'paid'
+  paidAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  barber     User       @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@map("commissions")
+}
+
+// ✅ NOVO: Model de Metas Financeiras
+model Goal {
+  id            String   @id @default(uuid())
+  barbershopId  String
+  name          String
+  targetAmount  Decimal  @db.Decimal(10, 2)
+  currentAmount Decimal  @db.Decimal(10, 2) @default(0)
+  startDate     DateTime
+  endDate       DateTime
+  status        String   @default("active") // 'active', 'completed', 'cancelled'
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@map("goals")
 }
 
 model Subscription {

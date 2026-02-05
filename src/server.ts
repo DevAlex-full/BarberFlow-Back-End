@@ -22,6 +22,10 @@ import { startCronJobs } from './jobs';
 import userRoutes from './routes/user.routes';
 import reportsRoutes from './routes/reports.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import transactionsRoutes from './routes/Transactions.routes';
+import commissionsRoutes from './routes/Commissions.routes';
+import goalsRoutes from './routes/Goals.routes';
+import financeRoutes from './routes/Finance.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -103,6 +107,10 @@ app.use('/api/client/appointments', clientAppointmentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/transactions', transactionsRoutes);
+app.use('/api/commissions', commissionsRoutes);
+app.use('/api/goals', goalsRoutes);
+app.use('/api/finance', financeRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
