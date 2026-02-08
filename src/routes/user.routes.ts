@@ -191,6 +191,7 @@ router.get('/', authMiddleware, async (req, res) => {
         avatar: true,
         role: true,
         active: true,
+        commissionPercentage: true, // ✅ INCLUIR PERCENTUAL
         createdAt: true
       },
       orderBy: { createdAt: 'desc' }
@@ -221,6 +222,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         avatar: true,
         role: true,
         active: true,
+        commissionPercentage: true, // ✅ INCLUIR PERCENTUAL
         createdAt: true
       }
     });
@@ -286,6 +288,7 @@ router.post('/', authMiddleware, isAdmin, checkBarberLimit, async (req, res) => 
         avatar: true,
         role: true,
         active: true,
+        commissionPercentage: true, // ✅ INCLUIR PERCENTUAL
         createdAt: true
       }
     });
@@ -297,11 +300,11 @@ router.post('/', authMiddleware, isAdmin, checkBarberLimit, async (req, res) => 
   }
 });
 
-// Atualizar usuário
+// ✅ Atualizar usuário (COM SUPORTE A COMMISSION PERCENTAGE)
 router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, role, password } = req.body;
+    const { name, email, phone, role, password, commissionPercentage } = req.body;
 
     // Verificar se o usuário existe e pertence à mesma barbearia
     const existingUser = await prisma.user.findFirst({
@@ -318,6 +321,11 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
     // Validar role
     if (role && !['admin', 'barber'].includes(role)) {
       return res.status(400).json({ error: 'Role inválida. Use "admin" ou "barber"' });
+    }
+
+    // ✅ Validar commissionPercentage
+    if (commissionPercentage !== undefined && (commissionPercentage < 0 || commissionPercentage > 100)) {
+      return res.status(400).json({ error: 'Percentual de comissão deve estar entre 0 e 100' });
     }
 
     // Verificar email duplicado (se estiver mudando)
@@ -339,6 +347,11 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
       role
     };
 
+    // ✅ Adicionar commissionPercentage se fornecido
+    if (commissionPercentage !== undefined) {
+      updateData.commissionPercentage = commissionPercentage;
+    }
+
     // Se houver senha nova, fazer hash
     if (password) {
       if (password.length < 6) {
@@ -359,6 +372,7 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
         avatar: true,
         role: true,
         active: true,
+        commissionPercentage: true, // ✅ Retornar o percentual
         createdAt: true
       }
     });

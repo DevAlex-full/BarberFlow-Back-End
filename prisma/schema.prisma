@@ -34,6 +34,9 @@ model User {
   // ✅ NOVO: Preferências do usuário (notificações, tema, etc)
   preferences Json? @default("{\"emailNotifications\":true,\"smsNotifications\":false,\"whatsappNotifications\":true,\"theme\":\"light\"}")
 
+  // ✅ NOVO FASE 5: Percentual de comissão (padrão 40%)
+  commissionPercentage Float @default(40)
+
   barbershop   Barbershop? @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String?
 
