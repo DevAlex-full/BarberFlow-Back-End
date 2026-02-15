@@ -464,4 +464,99 @@ router.delete('/:id', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
+router.put('/:id/commission', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { commissionPercentage } = req.body;
+    const requestUserId = req.user!.id;
+    const requestUserBarbershopId = req.user!.barbershopId;
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💰 Atualizar Comissão:');
+    console.log('   Target User ID:', id);
+    console.log('   Request User ID:', requestUserId);
+    console.log('   Request User BarbershopId:', requestUserBarbershopId);
+    console.log('   New Commission:', commissionPercentage + '%');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // Validar percentual
+    if (commissionPercentage === undefined || commissionPercentage < 0 || commissionPercentage > 100) {
+      return res.status(400).json({ 
+        error: 'Percentual de comissão deve estar entre 0 e 100' 
+      });
+    }
+
+    // Buscar usuário alvo
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        barbershopId: true,
+        commissionPercentage: true
+      }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    console.log('👤 Target User:');
+    console.log('   Name:', targetUser.name);
+    console.log('   BarbershopId:', targetUser.barbershopId);
+    console.log('   Current Commission:', targetUser.commissionPercentage + '%');
+
+    // ✅ REGRA 1: Usuário pode alterar a própria comissão
+    const isSelf = requestUserId === id;
+
+    // ✅ REGRA 2: Admin pode alterar comissão de usuários DA MESMA BARBEARIA
+    const isSameBarbershop = requestUserBarbershopId === targetUser.barbershopId;
+    const isRequestUserAdmin = req.user!.role?.toLowerCase() === 'admin';
+
+    // ✅ REGRA 3: Super Admin (sem barbershopId) pode alterar qualquer comissão
+    const isSuperAdmin = !requestUserBarbershopId;
+
+    console.log('🔐 Permissões:');
+    console.log('   isSelf:', isSelf);
+    console.log('   isSameBarbershop:', isSameBarbershop);
+    console.log('   isRequestUserAdmin:', isRequestUserAdmin);
+    console.log('   isSuperAdmin:', isSuperAdmin);
+
+    // Verificar permissão
+    const hasPermission = isSelf || (isRequestUserAdmin && isSameBarbershop) || isSuperAdmin;
+
+    if (!hasPermission) {
+      console.log('❌ Acesso negado!');
+      return res.status(403).json({ 
+        error: 'Você não tem permissão para alterar a comissão deste usuário' 
+      });
+    }
+
+    console.log('✅ Permissão concedida!');
+
+    // Atualizar
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { commissionPercentage },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        commissionPercentage: true
+      }
+    });
+
+    console.log(`✅ Comissão atualizada: ${updatedUser.name} → ${commissionPercentage}%`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar comissão:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar comissão' });
+  }
+});
+
 export default router;

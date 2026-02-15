@@ -2,8 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { TokenPayload } from '../types/express';
 
-// ✅ REMOVIDO: Declaração duplicada de tipos (já está em src/types/express.d.ts)
-
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
@@ -16,12 +14,11 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as TokenPayload;
     
-    // ✅ Agora atribui ao req.user com a tipagem correta
     req.user = {
       id: decoded.id,
       email: decoded.email,
       barbershopId: decoded.barbershopId,
-      role: decoded.role as 'ADMIN' | 'BARBER', // Cast explícito
+      role: decoded.role as 'ADMIN' | 'BARBER',
     };
     
     return next();
@@ -30,10 +27,35 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+// ✅ CORRIGIDO: Aceita 'admin' ou 'ADMIN' (case-insensitive)
 export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
-  // ✅ Corrigido: 'admin' → 'ADMIN' (maiúsculo, conforme o tipo)
-  if (req.user?.role !== 'ADMIN') {
+  const role = req.user?.role?.toLowerCase();
+  
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔐 Verificação isAdmin:');
+  console.log('   User ID:', req.user?.id);
+  console.log('   Role:', req.user?.role);
+  console.log('   BarbershopId:', req.user?.barbershopId);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  if (role !== 'admin') {
+    console.log('❌ Acesso negado: role não é admin');
     return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
   }
+  
+  console.log('✅ isAdmin passou!');
+  return next();
+};
+
+// ✅ NOVO: Middleware específico para rotas que precisam de barbershopId
+export const requireBarbershop = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user?.barbershopId) {
+    console.log('❌ Acesso negado: usuário não tem barbershopId');
+    return res.status(403).json({ 
+      error: 'Esta ação requer que você esteja vinculado a uma barbearia.' 
+    });
+  }
+  
+  console.log('✅ requireBarbershop passou! BarbershopId:', req.user.barbershopId);
   return next();
 };

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
+import { createTransactionFromAppointment, cancelTransactionFromAppointment } from '../services/transaction.service';
 
 const router = Router();
 
@@ -84,11 +85,21 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Atualizar agendamento
+// ✅ ATUALIZAR AGENDAMENTO - COM WEBHOOK FINANCEIRO
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { date, status, notes, customerId, barberId, serviceId } = req.body;
+    const barbershopId = req.user!.barbershopId!;
+
+    // ✅ Buscar agendamento ANTES da atualização
+    const previousAppointment = await prisma.appointment.findUnique({
+      where: { id }
+    });
+
+    if (!previousAppointment) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
 
     const updateData: any = {};
     
@@ -105,6 +116,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       if (service) updateData.price = service.price;
     }
 
+    // ✅ ATUALIZAR AGENDAMENTO
     const appointment = await prisma.appointment.update({
       where: { id },
       data: updateData,
@@ -114,6 +126,43 @@ router.put('/:id', authMiddleware, async (req, res) => {
         service: true
       }
     });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🎯 WEBHOOK FINANCEIRO AUTOMÁTICO
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // ✅ CASO 1: Agendamento marcado como CONCLUÍDO
+    if (status === 'completed' && previousAppointment.status !== 'completed') {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🎯 WEBHOOK: Agendamento concluído!');
+      console.log('   Status: ' + previousAppointment.status + ' → completed');
+      
+      try {
+        await createTransactionFromAppointment({
+          appointmentId: id,
+          barbershopId
+        });
+      } catch (error) {
+        console.error('❌ Erro ao criar transação automática:', error);
+        // ⚠️ NÃO FALHAR a requisição por erro financeiro
+      }
+    }
+
+    // ✅ CASO 2: Agendamento CANCELADO (que estava concluído)
+    if (status === 'cancelled' && previousAppointment.status === 'completed') {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔄 WEBHOOK: Agendamento cancelado!');
+      console.log('   Status: completed → cancelled');
+      
+      try {
+        await cancelTransactionFromAppointment({
+          appointmentId: id,
+          barbershopId
+        });
+      } catch (error) {
+        console.error('❌ Erro ao cancelar transação:', error);
+      }
+    }
 
     return res.json(appointment);
   } catch (error) {
