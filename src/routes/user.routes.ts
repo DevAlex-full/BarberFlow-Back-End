@@ -32,6 +32,9 @@ router.get('/profile', authMiddleware, async (req, res) => {
           }
         },
         preferences: true,
+        tutorialCompleted: true,
+        tutorialStep: true,
+        tutorialSkipped: true,
       }
     });
 
@@ -168,6 +171,48 @@ router.put('/preferences', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Erro ao salvar preferências:', error);
     return res.status(500).json({ error: 'Erro ao salvar preferências' });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📚 PUT /api/users/tutorial - Salvar progresso do tutorial
+// ⚠️ DEVE FICAR ANTES DAS ROTAS /:id PARA O EXPRESS CAPTURAR CORRETAMENTE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+router.put('/tutorial', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { tutorialCompleted, tutorialStep, tutorialSkipped } = req.body;
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📚 Atualizando progresso do tutorial:');
+    console.log('   User ID:', userId);
+    console.log('   Completed:', tutorialCompleted);
+    console.log('   Step:', tutorialStep);
+    console.log('   Skipped:', tutorialSkipped);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    const updateData: any = {};
+    
+    if (tutorialCompleted !== undefined) updateData.tutorialCompleted = tutorialCompleted;
+    if (tutorialStep !== undefined) updateData.tutorialStep = tutorialStep;
+    if (tutorialSkipped !== undefined) updateData.tutorialSkipped = tutorialSkipped;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        tutorialCompleted: true,
+        tutorialStep: true,
+        tutorialSkipped: true
+      }
+    });
+
+    console.log('✅ Tutorial atualizado:', updatedUser);
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar tutorial:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar progresso do tutorial' });
   }
 });
 

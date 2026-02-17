@@ -37,6 +37,10 @@ model User {
   // ✅ NOVO FASE 5: Percentual de comissão (padrão 40%)
   commissionPercentage Float @default(40)
 
+  tutorialCompleted Boolean @default(false)
+  tutorialStep      Int?    @default(0)
+  tutorialSkipped   Boolean @default(false)
+
   barbershop   Barbershop? @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String?
 
