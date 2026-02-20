@@ -82,7 +82,7 @@ function computeBarbershopStatus(b: any, now: Date) {
   let daysRemaining = 0;
   if (expiresAt) {
     const diffMs = new Date(expiresAt).getTime() - now.getTime();
-    daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     daysRemaining = daysRemaining > 0 ? daysRemaining : 0;
   }
 
