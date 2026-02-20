@@ -40,6 +40,7 @@ router.post('/register', async (req, res) => {
         plan: 'trial',
         planStatus: 'active',
         trialEndsAt: trialEndsAt,
+        planExpiresAt: trialEndsAt, // ✅ ADICIONADO - Mesmo valor do trial
         maxBarbers: 1,
         maxCustomers: 50
       }

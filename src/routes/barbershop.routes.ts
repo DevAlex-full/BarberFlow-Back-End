@@ -102,6 +102,63 @@ router.delete('/', authMiddleware, isAdmin, async (req, res) => {
   }
 });
 
+// ✅ NOVO: Buscar status do plano
+router.get('/plan-status', authMiddleware, async (req, res) => {
+  try {
+    const barbershop = await prisma.barbershop.findUnique({
+      where: { id: req.user!.barbershopId! },
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        planStatus: true,
+        planExpiresAt: true,
+        planStartedAt: true,
+        trialEndsAt: true
+      }
+    });
+
+    if (!barbershop) {
+      return res.status(404).json({ error: 'Barbearia não encontrada' });
+    }
+
+    // Calcular dias restantes
+    let daysRemaining = 0;
+    const now = new Date();
+    
+    if (barbershop.plan === 'trial' && barbershop.trialEndsAt) {
+      const diffTime = new Date(barbershop.trialEndsAt).getTime() - now.getTime();
+      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } else if (barbershop.planExpiresAt) {
+      const diffTime = new Date(barbershop.planExpiresAt).getTime() - now.getTime();
+      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+    
+    daysRemaining = daysRemaining > 0 ? daysRemaining : 0;
+
+    // Determinar se está expirando em breve (7 dias)
+    const isExpiringSoon = daysRemaining > 0 && daysRemaining <= 7;
+    
+    // Verificar se expirou
+    const isExpired = barbershop.planStatus === 'expired' || 
+                     (barbershop.planExpiresAt && new Date(barbershop.planExpiresAt) < now);
+
+    return res.json({
+      plan: barbershop.plan,
+      planStatus: isExpired ? 'expired' : barbershop.planStatus,
+      planExpiresAt: barbershop.planExpiresAt,
+      planStartedAt: barbershop.planStartedAt,
+      trialEndsAt: barbershop.trialEndsAt,
+      daysRemaining,
+      isExpired,
+      isExpiringSoon
+    });
+  } catch (error) {
+    console.error('Erro ao buscar status do plano:', error);
+    return res.status(500).json({ error: 'Erro ao buscar status do plano' });
+  }
+});
+
 // ===== ROTAS DE CONFIGURAÇÃO DA LANDING PAGE =====
 
 // Buscar configurações da landing page

@@ -25,7 +25,9 @@ export const checkPlanActive = async (req: Request, res: Response, next: NextFun
       if (new Date() > barbershop.trialEndsAt) {
         return res.status(403).json({ 
           error: 'Seu período de teste expirou. Por favor, assine um plano.',
-          code: 'TRIAL_EXPIRED'
+          code: 'TRIAL_EXPIRED',
+          planExpired: true,
+          redirectTo: '/planos'
         });
       }
     }
@@ -35,7 +37,9 @@ export const checkPlanActive = async (req: Request, res: Response, next: NextFun
       if (barbershop.planStatus !== 'active') {
         return res.status(403).json({ 
           error: 'Sua assinatura expirou. Por favor, renove seu plano.',
-          code: 'SUBSCRIPTION_EXPIRED'
+          code: 'SUBSCRIPTION_EXPIRED',
+          planExpired: true,
+          redirectTo: '/planos'
         });
       }
     }
@@ -134,3 +138,19 @@ export const checkCustomerLimit = async (req: Request, res: Response, next: Next
     return res.status(500).json({ error: 'Erro ao verificar limite' });
   }
 };
+
+/**
+ * Calcular dias restantes até expirar
+ */
+export const getDaysUntilExpiration = (expiresAt: Date | null): number => {
+  if (!expiresAt) return 0;
+  
+  const now = new Date();
+  const expiration = new Date(expiresAt);
+  const diffTime = expiration.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays > 0 ? diffDays : 0;
+};
+
+export const checkPlanStatus = checkPlanActive;
