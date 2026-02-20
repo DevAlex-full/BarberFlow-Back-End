@@ -32,16 +32,15 @@ export const checkPlanActive = async (req: Request, res: Response, next: NextFun
       }
     }
 
-    // Verificar se o plano expirou
-    if (barbershop.planExpiresAt && new Date() > barbershop.planExpiresAt) {
-      if (barbershop.planStatus !== 'active') {
-        return res.status(403).json({ 
-          error: 'Sua assinatura expirou. Por favor, renove seu plano.',
-          code: 'SUBSCRIPTION_EXPIRED',
-          planExpired: true,
-          redirectTo: '/planos'
-        });
-      }
+    // ✅ CORRIGIDO: verificar se o plano pago expirou pela data, sem checar planStatus
+    // (antes estava: if planStatus !== 'active' — condição invertida, nunca bloqueava)
+    if (barbershop.plan !== 'trial' && barbershop.planExpiresAt && new Date() > barbershop.planExpiresAt) {
+      return res.status(403).json({ 
+        error: 'Sua assinatura expirou. Por favor, renove seu plano.',
+        code: 'SUBSCRIPTION_EXPIRED',
+        planExpired: true,
+        redirectTo: '/planos'
+      });
     }
 
     // Verificar se está suspenso
