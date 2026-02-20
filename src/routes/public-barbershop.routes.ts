@@ -8,14 +8,34 @@ router.get('/barbershops', async (req, res) => {
   try {
     const { search, city, state } = req.query;
 
+    const now = new Date();
+
     const where: any = {
       active: true,
+      // ✅ Apenas barbearias com plano ativo e não expirado
+      planStatus: 'active',
+      OR: [
+        // Trial ainda dentro do prazo
+        {
+          plan: 'trial',
+          trialEndsAt: { gte: now }
+        },
+        // Plano pago dentro do prazo
+        {
+          plan: { not: 'trial' },
+          planExpiresAt: { gte: now }
+        }
+      ]
     };
 
     if (search) {
-      where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { city: { contains: search as string, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: search as string, mode: 'insensitive' } },
+            { city: { contains: search as string, mode: 'insensitive' } },
+          ]
+        }
       ];
     }
 

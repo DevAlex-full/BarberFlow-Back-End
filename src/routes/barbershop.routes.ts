@@ -135,7 +135,7 @@ router.get('/plan-status', authMiddleware, async (req, res) => {
     let daysRemaining = 0;
     if (expiresAt) {
       const diffTime = new Date(expiresAt).getTime() - now.getTime();
-      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      daysRemaining = Math.floor(diffTime / (1000 * 60 * 60 * 24));
       daysRemaining = daysRemaining > 0 ? daysRemaining : 0;
     }
 
