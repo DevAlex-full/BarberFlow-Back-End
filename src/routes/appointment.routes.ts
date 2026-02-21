@@ -69,7 +69,7 @@ router.post('/', authMiddleware, async (req, res) => {
         barbershopId: req.user!.barbershopId!,
         price: service.price,
         notes,
-        status: 'scheduled'
+        status: 'confirmed'
       },
       include: {
         customer: true,
