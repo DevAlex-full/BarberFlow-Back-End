@@ -204,11 +204,12 @@ router.post('/', clientAuthMiddleware, async (req, res) => {
           price: appointment.price.toFixed(2),
         });
 
-        await sendEmail({
+        // Fire and forget — não bloqueia a resposta
+        sendEmail({
           to: appointment.client.email,
           subject: `Agendamento Confirmado - ${appointment.barbershop.name}`,
           html: emailHtml,
-        });
+        }).catch(err => console.error('Erro ao enviar email:', err));
       } catch (emailError) {
         console.error('Erro ao enviar email de confirmação:', emailError);
       }
@@ -252,8 +253,8 @@ router.patch('/:id/cancel', clientAuthMiddleware, async (req, res) => {
     const hoursDiff = (appointmentDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     if (hoursDiff < 2) {
-      return res.status(400).json({ 
-        error: 'Não é possível cancelar com menos de 2 horas de antecedência' 
+      return res.status(400).json({
+        error: 'Não é possível cancelar com menos de 2 horas de antecedência'
       });
     }
 
@@ -296,12 +297,12 @@ if (process.env.NODE_ENV === 'development') {
     try {
       console.log('\n🧪 ========== TESTE DE LEMBRETES ==========');
       console.log(`⏰ Hora: ${new Date().toLocaleString('pt-BR')}\n`);
-      
+
       const { sendAutomaticReminders } = await import('../jobs/reminder.job');
       const result = await sendAutomaticReminders();
-      
+
       console.log('\n✅ ========== TESTE CONCLUÍDO ==========\n');
-      
+
       return res.json({
         success: true,
         message: 'Teste de lembretes executado com sucesso',
@@ -312,9 +313,9 @@ if (process.env.NODE_ENV === 'development') {
       console.error('\n❌ ========== ERRO NO TESTE ==========');
       console.error(error);
       console.log('\n');
-      
-      return res.status(500).json({ 
-        success: false, 
+
+      return res.status(500).json({
+        success: false,
         error: 'Erro ao executar teste de lembretes',
         message: error instanceof Error ? error.message : 'Erro desconhecido'
       });
