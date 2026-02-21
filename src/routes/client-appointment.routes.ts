@@ -189,6 +189,28 @@ router.post('/', clientAuthMiddleware, async (req, res) => {
       },
     });
 
+    try {
+      const client = await prisma.client.findUnique({ where: { id: clientId } });
+      if (client) {
+        const existingCustomer = await prisma.customer.findFirst({
+          where: { barbershopId, email: client.email }
+        });
+        if (!existingCustomer) {
+          await prisma.customer.create({
+            data: {
+              barbershopId,
+              name: client.name,
+              email: client.email,
+              phone: client.phone || '',
+            }
+          });
+          console.log(`✅ Cliente ${client.name} adicionado automaticamente à barbearia`);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao criar customer automático:', err);
+    }
+
     // Enviar email de confirmação
     if (appointment.client?.email) {
       try {

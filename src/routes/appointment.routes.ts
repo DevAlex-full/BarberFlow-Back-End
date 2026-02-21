@@ -9,7 +9,7 @@ const router = Router();
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { date, status } = req.query;
-    
+
     const where: any = {
       barbershopId: req.user!.barbershopId!
     };
@@ -18,7 +18,7 @@ router.get('/', authMiddleware, async (req, res) => {
       const startDate = new Date(date as string);
       const endDate = new Date(date as string);
       endDate.setDate(endDate.getDate() + 1);
-      
+
       where.date = {
         gte: startDate,
         lt: endDate
@@ -33,6 +33,7 @@ router.get('/', authMiddleware, async (req, res) => {
       where,
       include: {
         customer: { select: { id: true, name: true, phone: true } },
+        client: { select: { id: true, name: true, phone: true } },
         barber: { select: { id: true, name: true } },
         service: { select: { id: true, name: true, price: true, duration: true } }
       },
@@ -102,7 +103,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
 
     const updateData: any = {};
-    
+
     if (date) updateData.date = new Date(date);
     if (status) updateData.status = status;
     if (notes !== undefined) updateData.notes = notes;
@@ -136,7 +137,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('🎯 WEBHOOK: Agendamento concluído!');
       console.log('   Status: ' + previousAppointment.status + ' → completed');
-      
+
       try {
         await createTransactionFromAppointment({
           appointmentId: id,
@@ -153,7 +154,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('🔄 WEBHOOK: Agendamento cancelado!');
       console.log('   Status: completed → cancelled');
-      
+
       try {
         await cancelTransactionFromAppointment({
           appointmentId: id,
