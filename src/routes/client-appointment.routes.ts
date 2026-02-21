@@ -189,26 +189,31 @@ router.post('/', clientAuthMiddleware, async (req, res) => {
       },
     });
 
-    try {
-      const client = await prisma.client.findUnique({ where: { id: clientId } });
-      if (client) {
+    // ✅ Auto-criar Customer usando dados já carregados no include
+    if (appointment.client) {
+      try {
         const existingCustomer = await prisma.customer.findFirst({
-          where: { barbershopId, email: client.email }
+          where: {
+            barbershopId,
+            email: appointment.client.email
+          }
         });
         if (!existingCustomer) {
           await prisma.customer.create({
             data: {
               barbershopId,
-              name: client.name,
-              email: client.email,
-              phone: client.phone || '',
+              name: appointment.client.name,
+              email: appointment.client.email,
+              phone: '',
             }
           });
-          console.log(`✅ Cliente ${client.name} adicionado automaticamente à barbearia`);
+          console.log(`✅ Customer criado: ${appointment.client.name} na barbearia ${barbershopId}`);
+        } else {
+          console.log(`ℹ️ Customer já existe: ${appointment.client.name}`);
         }
+      } catch (err) {
+        console.error('❌ Erro ao criar customer automático:', err);
       }
-    } catch (err) {
-      console.error('Erro ao criar customer automático:', err);
     }
 
     // Enviar email de confirmação
