@@ -15,64 +15,73 @@ interface AuthRequest extends Request {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Gera o redirect final com token + user.
- * Se `redirectUri` começa com o scheme do app (barberflow://)
- * redireciona para o app, caso contrário vai para o web.
+ * Verifica se o redirect_uri é seguro para usar.
+ * Aceita:
+ *  - barberflow://  (app em produção — build standalone)
+ *  - exp://         (app em desenvolvimento — Expo Go)
+ *  - FRONTEND_URL   (web)
  */
-function buildSuccessRedirect(
-  redirectUri: string | null,
-  token: string,
-  userData: string
-): string {
-  const webFallback = `${process.env.FRONTEND_URL}/sou-cliente`;
-  const base        = redirectUri && redirectUri.startsWith('barberflow://')
-    ? redirectUri
-    : webFallback;
+function isSafeRedirectUri(uri: string | null): boolean {
+  if (!uri) return false;
+  return (
+    uri.startsWith('barberflow://') ||
+    uri.startsWith('exp://') ||
+    uri.startsWith(process.env.FRONTEND_URL || 'https://')
+  );
+}
 
+function buildSuccessRedirect(redirectUri: string | null, token: string, userData: string): string {
+  const base      = redirectUri && isSafeRedirectUri(redirectUri)
+    ? redirectUri
+    : `${process.env.FRONTEND_URL}/sou-cliente`;
   const separator = base.includes('?') ? '&' : '?';
   return `${base}${separator}token=${token}&user=${userData}`;
 }
 
 function buildErrorRedirect(redirectUri: string | null, errorCode: string): string {
-  const webFallback = `${process.env.FRONTEND_URL}/sou-cliente`;
-  const base        = redirectUri && redirectUri.startsWith('barberflow://')
+  const base      = redirectUri && isSafeRedirectUri(redirectUri)
     ? redirectUri
-    : webFallback;
-
+    : `${process.env.FRONTEND_URL}/sou-cliente`;
   const separator = base.includes('?') ? '&' : '?';
   return `${base}${separator}error=${errorCode}`;
 }
 
-/** Lê o redirect_uri salvo no state (base64 JSON) */
-function parseState(stateRaw?: string): { redirectUri: string | null } {
-  if (!stateRaw) return { redirectUri: null };
+/** Codifica o redirectUri no state (base64 JSON) */
+function encodeState(redirectUri: string | null): string {
+  return Buffer.from(JSON.stringify({ redirectUri })).toString('base64');
+}
+
+/** Decodifica o state e retorna o redirectUri */
+function parseState(stateRaw?: string): string | null {
+  if (!stateRaw) return null;
   try {
     const decoded = JSON.parse(Buffer.from(stateRaw, 'base64').toString('utf8'));
-    return { redirectUri: decoded.redirectUri || null };
+    return decoded.redirectUri || null;
   } catch {
-    return { redirectUri: null };
+    return null;
   }
 }
 
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
 
-// Inicia o fluxo — salva redirect_uri no state
+// Inicia fluxo — codifica redirect_uri no state
 router.get('/google', (req: Request, res: Response, next) => {
-  const redirectUri  = (req.query.redirect_uri as string) || null;
-  const statePayload = Buffer.from(JSON.stringify({ redirectUri })).toString('base64');
+  const redirectUri = (req.query.redirect_uri as string) || null;
+  console.log('🔵 Google OAuth iniciado | redirect_uri:', redirectUri);
 
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: false,
-    state: statePayload,
+    state: encodeState(redirectUri),
   })(req, res, next);
 });
 
-// Callback
+// Callback do Google
 router.get(
   '/google/callback',
   (req: Request, res: Response, next) => {
-    const { redirectUri } = parseState(req.query.state as string);
+    const redirectUri = parseState(req.query.state as string);
+    console.log('🔵 Google callback | redirectUri do state:', redirectUri);
 
     passport.authenticate('google', {
       session: false,
@@ -80,7 +89,7 @@ router.get(
     })(req, res, next);
   },
   (req: AuthRequest, res: Response) => {
-    const { redirectUri } = parseState(req.query.state as string);
+    const redirectUri = parseState(req.query.state as string);
 
     try {
       if (!req.user) {
@@ -100,9 +109,11 @@ router.get(
         phone: req.user.phone,
       }));
 
-      return res.redirect(buildSuccessRedirect(redirectUri, token, userData));
+      const finalUrl = buildSuccessRedirect(redirectUri, token, userData);
+      console.log('✅ Google OAuth sucesso | redirecionando para:', finalUrl.split('?')[0]);
+      return res.redirect(finalUrl);
     } catch (error) {
-      console.error('Erro no callback do Google:', error);
+      console.error('❌ Erro no callback do Google:', error);
       return res.redirect(buildErrorRedirect(redirectUri, 'callback_failed'));
     }
   }
@@ -110,23 +121,24 @@ router.get(
 
 // ─── Facebook OAuth ────────────────────────────────────────────────────────────
 
-// Inicia o fluxo — salva redirect_uri no state
+// Inicia fluxo — codifica redirect_uri no state
 router.get('/facebook', (req: Request, res: Response, next) => {
-  const redirectUri  = (req.query.redirect_uri as string) || null;
-  const statePayload = Buffer.from(JSON.stringify({ redirectUri })).toString('base64');
+  const redirectUri = (req.query.redirect_uri as string) || null;
+  console.log('🔵 Facebook OAuth iniciado | redirect_uri:', redirectUri);
 
   passport.authenticate('facebook', {
     scope: ['email'],
     session: false,
-    state: statePayload,
+    state: encodeState(redirectUri),
   })(req, res, next);
 });
 
-// Callback
+// Callback do Facebook
 router.get(
   '/facebook/callback',
   (req: Request, res: Response, next) => {
-    const { redirectUri } = parseState(req.query.state as string);
+    const redirectUri = parseState(req.query.state as string);
+    console.log('🔵 Facebook callback | redirectUri do state:', redirectUri);
 
     passport.authenticate('facebook', {
       session: false,
@@ -134,7 +146,7 @@ router.get(
     })(req, res, next);
   },
   (req: AuthRequest, res: Response) => {
-    const { redirectUri } = parseState(req.query.state as string);
+    const redirectUri = parseState(req.query.state as string);
 
     try {
       if (!req.user) {
@@ -154,9 +166,11 @@ router.get(
         phone: req.user.phone,
       }));
 
-      return res.redirect(buildSuccessRedirect(redirectUri, token, userData));
+      const finalUrl = buildSuccessRedirect(redirectUri, token, userData);
+      console.log('✅ Facebook OAuth sucesso | redirecionando para:', finalUrl.split('?')[0]);
+      return res.redirect(finalUrl);
     } catch (error) {
-      console.error('Erro no callback do Facebook:', error);
+      console.error('❌ Erro no callback do Facebook:', error);
       return res.redirect(buildErrorRedirect(redirectUri, 'callback_failed'));
     }
   }
@@ -173,11 +187,9 @@ router.post('/register', async (req, res) => {
         error: 'Você deve aceitar os Termos de Uso e Política de Privacidade',
       });
     }
-
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
     }
-
     if (password.length < 6) {
       return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres' });
     }
@@ -188,23 +200,15 @@ router.post('/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const client = await prisma.client.create({
       data: {
-        name,
-        email,
-        phone,
+        name, email, phone,
         password: hashedPassword,
-        termsAccepted: true,
-        termsAcceptedAt: new Date(),
-        privacyAccepted: true,
-        privacyAcceptedAt: new Date(),
-        termsVersion: 'v1.0',
-        privacyVersion: 'v1.0',
+        termsAccepted: true, termsAcceptedAt: new Date(),
+        privacyAccepted: true, privacyAcceptedAt: new Date(),
+        termsVersion: 'v1.0', privacyVersion: 'v1.0',
       },
-      select: {
-        id: true, name: true, email: true, phone: true, avatar: true, createdAt: true,
-      },
+      select: { id: true, name: true, email: true, phone: true, avatar: true, createdAt: true },
     });
 
     const token = jwt.sign(
@@ -223,7 +227,6 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
     console.log('🔐 Tentativa de login:', { email });
 
     if (!email || !password) {
@@ -231,23 +234,15 @@ router.post('/login', async (req, res) => {
     }
 
     const client = await prisma.client.findUnique({ where: { email } });
-
     console.log('👤 Cliente encontrado:', client ? 'SIM' : 'NÃO');
 
-    if (!client) {
-      return res.status(401).json({ error: 'Email ou senha inválidos' });
-    }
-
-    if (!client.active) {
-      return res.status(401).json({ error: 'Conta desativada' });
-    }
+    if (!client) return res.status(401).json({ error: 'Email ou senha inválidos' });
+    if (!client.active) return res.status(401).json({ error: 'Conta desativada' });
 
     if (client.password) {
       const validPassword = await bcrypt.compare(password, client.password);
       console.log('🔑 Senha válida:', validPassword ? 'SIM' : 'NÃO');
-      if (!validPassword) {
-        return res.status(401).json({ error: 'Email ou senha inválidos' });
-      }
+      if (!validPassword) return res.status(401).json({ error: 'Email ou senha inválidos' });
     } else {
       return res.status(401).json({
         error: 'Esta conta foi criada com Google/Facebook. Use o botão correspondente para entrar.',
@@ -261,9 +256,7 @@ router.post('/login', async (req, res) => {
     );
 
     const { password: _, ...clientData } = client;
-
     console.log('✅ Login bem-sucedido:', client.email);
-
     return res.json({ client: clientData, token });
   } catch (error) {
     console.error('❌ Erro ao fazer login:', error);
@@ -277,26 +270,18 @@ router.get('/me', async (req, res) => {
     if (!authHeader) return res.status(401).json({ error: 'Token não fornecido' });
 
     const [, token] = authHeader.split(' ');
-
     const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'your-secret-key'
+      token, process.env.JWT_SECRET || 'your-secret-key'
     ) as { id: string; type: string };
 
-    if (decoded.type !== 'client') {
-      return res.status(401).json({ error: 'Token inválido' });
-    }
+    if (decoded.type !== 'client') return res.status(401).json({ error: 'Token inválido' });
 
     const client = await prisma.client.findUnique({
       where: { id: decoded.id },
-      select: {
-        id: true, name: true, email: true, phone: true,
-        avatar: true, birthDate: true, createdAt: true,
-      },
+      select: { id: true, name: true, email: true, phone: true, avatar: true, birthDate: true, createdAt: true },
     });
 
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
-
     return res.json(client);
   } catch (error) {
     console.error('Erro ao buscar dados:', error);
@@ -312,7 +297,6 @@ router.get('/validate-reset-token', async (req, res) => {
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
     const client = await prisma.client.findFirst({
       where: {
         resetPasswordToken: hashedToken,
@@ -320,10 +304,7 @@ router.get('/validate-reset-token', async (req, res) => {
       },
     });
 
-    if (!client) {
-      return res.status(400).json({ valid: false, error: 'Token inválido ou expirado' });
-    }
-
+    if (!client) return res.status(400).json({ valid: false, error: 'Token inválido ou expirado' });
     return res.status(200).json({ valid: true, message: 'Token válido' });
   } catch (error) {
     console.error('Erro ao validar token:', error);
