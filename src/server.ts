@@ -18,6 +18,7 @@ import paymentRoutes from './routes/payment.routes';
 import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
+import clientFavoritesRoutes from './routes/client-favorites.routes'; // ✅ NOVO
 import { startCronJobs } from './jobs';
 import userRoutes from './routes/user.routes';
 import reportsRoutes from './routes/reports.routes';
@@ -104,6 +105,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/public', publicBarbershopRoutes);
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/appointments', clientAppointmentRoutes);
+app.use('/api/client/favorites', clientFavoritesRoutes); // ✅ NOVO
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/analytics', analyticsRoutes);

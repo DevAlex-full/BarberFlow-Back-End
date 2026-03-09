@@ -109,6 +109,7 @@ model Barbershop {
   transactions  Transaction[] // ✅ NOVO: Transações financeiras
   commissions   Commission[]  // ✅ NOVO: Comissões
   goals         Goal[]        // ✅ NOVO: Metas
+  clientFavorites ClientFavorite[] // ✅ NOVO: Favoritos dos clientes
   
   @@map("barbershops")
 }
@@ -271,6 +272,7 @@ model Client {
   privacyVersion     String?   // ex: "v1.0"
 
   appointments Appointment[]
+  favorites    ClientFavorite[] // ✅ NOVO: Favoritos do cliente
   
   @@map("clients")
 }
@@ -300,4 +302,18 @@ model Appointment {
   serviceId String
   
   @@map("appointments")
+}
+
+// ✅ NOVO: Favoritos dos Clientes
+model ClientFavorite {
+  id           String   @id @default(uuid())
+  clientId     String
+  barbershopId String
+  createdAt    DateTime @default(now())
+
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, barbershopId])
+  @@map("client_favorites")
 }
