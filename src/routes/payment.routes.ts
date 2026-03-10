@@ -100,6 +100,11 @@ router.post('/create-preference', authMiddleware, async (req, res) => {
         price: price.toString(),
         discount: discountPercentage.toString()
       },
+      payment_methods: {
+        excluded_payment_types: [],
+        installments: 12,
+        default_installments: 1
+      },
       notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
       statement_descriptor: 'BARBERFLOW',
       external_reference: `${barbershop.id}-${plan}-${Date.now()}`
