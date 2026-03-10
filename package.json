@@ -5,8 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "build:force": "tsc --skipLibCheck || true",
+    "build": "npx prisma generate && tsc",
+    "build:force": "npx prisma generate && tsc --skipLibCheck || true",
     "start": "node dist/server.js"
   },
   "keywords": [
