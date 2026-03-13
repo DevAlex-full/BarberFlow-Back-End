@@ -1,5 +1,8 @@
 // barberflow-back-end/src/config/prisma.ts
 
+import dotenv from 'dotenv';
+dotenv.config(); // ✅ DEVE SER A PRIMEIRA COISA — carrega .env antes do Prisma
+
 import { PrismaClient } from '@prisma/client';
 
 // ✅ SINGLETON: Garante UMA ÚNICA instância do Prisma
@@ -64,11 +67,9 @@ prisma.$use(async (params, next) => {
           console.error('❌ Erro ao reconectar:', reconnectError);
         }
         
-        // ✅ Tentar novamente
         continue;
       }
       
-      // ✅ Se não for erro de prepared statement ou excedeu retries, lança o erro
       throw error;
     }
   }

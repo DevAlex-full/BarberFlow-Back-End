@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config(); // ✅ Carrega .env antes de ler as credenciais OAuth
+
 import passport from 'passport';
 import { 
   Strategy as GoogleStrategy, 
@@ -69,7 +72,6 @@ if (GOOGLE_CONFIG.clientID && GOOGLE_CONFIG.clientSecret && GOOGLE_CONFIG.callba
             });
           }
 
-          // ✅ Retorna o client (Passport aceita qualquer tipo)
           return done(null, client as any);
         } catch (error) {
           console.error('❌ Erro no Google OAuth:', error);
@@ -149,7 +151,6 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
             });
           }
 
-          // ✅ Retorna o client (Passport aceita qualquer tipo)
           return done(null, client as any);
         } catch (error) {
           console.error('❌ Erro no Facebook OAuth:', error);
@@ -167,12 +168,9 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
 // SERIALIZAÇÃO (para sessões - se necessário)
 // ===========================
 passport.serializeUser((entity: Express.User | Client, done) => {
-  // Verifica se é User (barbearia) ou Client (OAuth)
   if ('barbershopId' in entity) {
-    // É um User (barbearia)
     done(null, { type: 'user', id: entity.id });
   } else {
-    // É um Client (OAuth)
     done(null, { type: 'client', id: entity.id });
   }
 });
