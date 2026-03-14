@@ -1,8 +1,15 @@
+// src/services/email.service.ts
+// ✅ GRÁTIS: Brevo (ex-Sendinblue) — 300 emails/dia free forever
+// Para usar: cadastre em https://app.brevo.com → Settings → SMTP & API → SMTP Keys
+
 import nodemailer from 'nodemailer';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Transporter — detecta qual SMTP usar
+// ─────────────────────────────────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || '587'),
+  host:   process.env.EMAIL_HOST   || 'smtp-relay.brevo.com',
+  port:   parseInt(process.env.EMAIL_PORT || '587'),
   secure: false,
   auth: {
     user: process.env.EMAIL_USER,
@@ -10,14 +17,17 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// // Verificar conexão ao iniciar
-// transporter.verify((error, success) => {
-//   if (error) {
-//     console.error('❌ Erro na configuração do email:', error);
-//   } else {
-//     console.log('✅ Servidor de email pronto para enviar mensagens');
-//   }
-// });
+// Verifica conexão ao iniciar (apenas em development)
+if (process.env.NODE_ENV !== 'production') {
+  transporter.verify((error) => {
+    if (error) {
+      console.error('❌ Email SMTP não configurado:', error.message);
+      console.log('💡 Configure as variáveis: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM');
+    } else {
+      console.log('✅ Email SMTP pronto para envio');
+    }
+  });
+}
 
 interface EmailData {
   to: string;
@@ -25,574 +35,302 @@ interface EmailData {
   html: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Função principal de envio
+// ─────────────────────────────────────────────────────────────────────────────
 export async function sendEmail({ to, subject, html }: EmailData) {
+  // ✅ Se email não estiver configurado, só loga (não quebra o app)
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('⚠️ [EMAIL] SMTP não configurado — email não enviado para:', to);
+    console.warn('💡 Configure EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM no .env');
+    return;
+  }
+
   try {
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
+      from: process.env.EMAIL_FROM || `BarberFlow <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
     });
-    console.log('Email enviado para:', to);
-  } catch (error) {
-    console.error('Erro ao enviar email:', error);
-    throw error;
+    console.log('✅ [EMAIL] Enviado para:', to, '|', subject);
+  } catch (error: any) {
+    console.error('❌ [EMAIL] Erro ao enviar para:', to, '|', error.message);
+    // Não lança o erro para não quebrar o fluxo principal
   }
 }
 
-// Template de lembrete de agendamento
-export function appointmentReminderTemplate(data: {
-  customerName: string;
-  serviceName: string;
-  date: string;
-  time: string;
-  barberName: string;
-  barbershopName: string;
-}) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Template base (reutilizável)
+// ─────────────────────────────────────────────────────────────────────────────
+function baseTemplate(content: string, accentColor = '#2563eb'): string {
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
-        .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 20px; }
-        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>✂️ Lembrete de Agendamento</h1>
-        </div>
-        <div class="content">
-          <p>Olá <strong>${data.customerName}</strong>,</p>
-          <p>Este é um lembrete do seu agendamento na <strong>${data.barbershopName}</strong>!</p>
-          
-          <div class="info-box">
-            <p><strong>📅 Data:</strong> ${data.date}</p>
-            <p><strong>🕐 Horário:</strong> ${data.time}</p>
-            <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
-            <p><strong>👤 Profissional:</strong> ${data.barberName}</p>
-          </div>
-          
-          <p>Por favor, chegue com 5 minutos de antecedência.</p>
-          <p>Se precisar cancelar ou reagendar, entre em contato conosco.</p>
-          
-          <p style="margin-top: 30px;">Até logo! 👋</p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow - Sistema de Gestão para Barbearias</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-// Template de confirmação de agendamento
-export function appointmentConfirmationTemplate(data: {
-  customerName: string;
-  serviceName: string;
-  date: string;
-  time: string;
-  barberName: string;
-  barbershopName: string;
-  price: string;
-}) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .success-icon { font-size: 48px; text-align: center; margin: 20px 0; }
-        .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
-        .price { background: #e8f5e9; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; }
-        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>✅ Agendamento Confirmado!</h1>
-        </div>
-        <div class="content">
-          <div class="success-icon">✂️</div>
-          <p>Olá <strong>${data.customerName}</strong>,</p>
-          <p>Seu agendamento foi confirmado com sucesso na <strong>${data.barbershopName}</strong>!</p>
-          
-          <div class="info-box">
-            <p><strong>📅 Data:</strong> ${data.date}</p>
-            <p><strong>🕐 Horário:</strong> ${data.time}</p>
-            <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
-            <p><strong>👤 Profissional:</strong> ${data.barberName}</p>
-          </div>
-          
-          <div class="price">
-            <p style="margin: 0; font-size: 18px;"><strong>💰 Valor: R$ ${data.price}</strong></p>
-          </div>
-          
-          <p>Você receberá um lembrete 24 horas antes do seu horário.</p>
-          <p>Estamos ansiosos para atendê-lo!</p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow - Sistema de Gestão para Barbearias</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-// Template de confirmação para cliente (sistema público)
-export function clientAppointmentConfirmationTemplate(data: {
-  clientName: string;
-  serviceName: string;
-  date: string;
-  time: string;
-  barberName: string;
-  barbershopName: string;
-  barbershopAddress: string;
-  barbershopPhone: string;
-  price: string;
-}) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .success-icon { font-size: 48px; text-align: center; margin: 20px 0; }
-        .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #2563eb; }
-        .price { background: #dbeafe; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; }
-        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>✅ Agendamento Confirmado!</h1>
-        </div>
-        <div class="content">
-          <div class="success-icon">✂️</div>
-          <p>Olá <strong>${data.clientName}</strong>,</p>
-          <p>Seu agendamento foi confirmado com sucesso!</p>
-          
-          <div class="info-box">
-            <h3 style="margin-top: 0; color: #2563eb;">📍 ${data.barbershopName}</h3>
-            <p><strong>📅 Data:</strong> ${data.date}</p>
-            <p><strong>🕐 Horário:</strong> ${data.time}</p>
-            <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
-            <p><strong>👤 Barbeiro:</strong> ${data.barberName}</p>
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 15px 0;">
-            <p><strong>📍 Endereço:</strong><br>${data.barbershopAddress}</p>
-            <p><strong>📞 Telefone:</strong> ${data.barbershopPhone}</p>
-          </div>
-          
-          <div class="price">
-            <p style="margin: 0; font-size: 20px;"><strong>💰 Valor: R$ ${data.price}</strong></p>
-          </div>
-          
-          <p style="background: #fef3c7; padding: 15px; border-radius: 5px; border-left: 4px solid #f59e0b;">
-            ⏰ <strong>Importante:</strong> Chegue com 5 minutos de antecedência!
-          </p>
-          
-          <p>Você receberá um lembrete 24 horas antes do seu horário.</p>
-          <p>Qualquer dúvida, entre em contato com a barbearia.</p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow - Sistema de Agendamento para Barbearias</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-// Template de cancelamento para cliente
-export function clientCancellationTemplate(data: {
-  clientName: string;
-  serviceName: string;
-  date: string;
-  time: string;
-  barbershopName: string;
-}) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .info-box { background: #fee2e2; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #dc2626; }
-        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>❌ Agendamento Cancelado</h1>
-        </div>
-        <div class="content">
-          <p>Olá <strong>${data.clientName}</strong>,</p>
-          <p>Seu agendamento foi cancelado conforme solicitado.</p>
-          
-          <div class="info-box">
-            <h3 style="margin-top: 0; color: #dc2626;">Detalhes do Agendamento Cancelado</h3>
-            <p><strong>📍 Barbearia:</strong> ${data.barbershopName}</p>
-            <p><strong>📅 Data:</strong> ${data.date}</p>
-            <p><strong>🕐 Horário:</strong> ${data.time}</p>
-            <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
-          </div>
-          
-          <p>Sentiremos sua falta! 😢</p>
-          <p>Você pode fazer um novo agendamento a qualquer momento através do BarberFlow.</p>
-          
-          <p style="margin-top: 30px;">Até breve! 👋</p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow - Sistema de Agendamento para Barbearias</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-// Template de lembrete para cliente
-export function clientReminderTemplate(data: {
-  clientName: string;
-  serviceName: string;
-  date: string;
-  time: string;
-  barberName: string;
-  barbershopName: string;
-  barbershopAddress: string;
-  barbershopPhone: string;
-}) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .reminder-icon { font-size: 48px; text-align: center; margin: 20px 0; }
-        .info-box { background: #fef3c7; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #f59e0b; }
-        .alert-box { background: #fee2e2; padding: 15px; border-radius: 5px; border-left: 4px solid #dc2626; margin: 20px 0; }
-        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>⏰ Lembrete de Agendamento</h1>
-        </div>
-        <div class="content">
-          <div class="reminder-icon">🔔</div>
-          <p>Olá <strong>${data.clientName}</strong>,</p>
-          <p>Seu agendamento é <strong>amanhã</strong>! Não esqueça:</p>
-          
-          <div class="info-box">
-            <h3 style="margin-top: 0; color: #d97706;">📍 ${data.barbershopName}</h3>
-            <p><strong>📅 Data:</strong> ${data.date}</p>
-            <p><strong>🕐 Horário:</strong> ${data.time}</p>
-            <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
-            <p><strong>👤 Barbeiro:</strong> ${data.barberName}</p>
-            <hr style="border: none; border-top: 1px solid #fcd34d; margin: 15px 0;">
-            <p><strong>📍 Endereço:</strong><br>${data.barbershopAddress}</p>
-            <p><strong>📞 Telefone:</strong> ${data.barbershopPhone}</p>
-          </div>
-          
-          <div class="alert-box">
-            <p style="margin: 0; font-size: 16px;"><strong>⚠️ Atenção:</strong> Chegue com 5 minutos de antecedência para não perder seu horário!</p>
-          </div>
-          
-          <p>Caso precise cancelar ou reagendar, entre em contato com a barbearia o quanto antes.</p>
-          <p>Nos vemos em breve! 😊</p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow - Sistema de Agendamento para Barbearias</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-// ✅ NOVO: Interface para confirmação de pagamento
-interface PaymentConfirmationData {
-  to: string;
-  barbershopName: string;
-  planName: string;
-  amount: number;
-  period: string;
-  expiresAt: Date;
-}
-
-// ✅ NOVO: Email de confirmação de pagamento
-export async function sendPaymentConfirmationEmail(data: PaymentConfirmationData) {
-  const { to, barbershopName, planName, amount, period, expiresAt } = data;
-
-  const periodNames: Record<string, string> = {
-    monthly: 'Mensal',
-    semiannual: 'Semestral',
-    annual: 'Anual'
-  };
-
-  const periodName = periodNames[period] || 'Mensal';
-  const formattedAmount = amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formattedDate = expiresAt.toLocaleDateString('pt-BR', { 
-    day: '2-digit', 
-    month: 'long', 
-    year: 'numeric' 
-  });
-
-  const html = `
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <style>
-        body { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f7; }
-        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); padding: 40px 20px; text-align: center; }
-        .header h1 { color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; }
-        .content { padding: 40px 30px; }
-        .success-icon { text-align: center; margin-bottom: 30px; font-size: 64px; }
-        .message { font-size: 16px; color: #374151; line-height: 1.6; margin-bottom: 30px; }
-        .plan-details { background-color: #f9fafb; border-radius: 8px; padding: 20px; margin: 30px 0; }
-        .plan-details h2 { color: #8B5CF6; font-size: 20px; margin: 0 0 15px 0; }
-        .detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
-        .detail-row:last-child { border-bottom: none; }
-        .detail-label { color: #6b7280; font-size: 14px; }
-        .detail-value { color: #111827; font-weight: 600; font-size: 14px; }
-        .highlight { background-color: #fef3c7; padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0; }
-        .cta-button { display: inline-block; background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; }
-        .footer { background-color: #f9fafb; padding: 30px; text-align: center; font-size: 14px; color: #6b7280; }
-        .support { margin-top: 30px; padding-top: 30px; border-top: 1px solid #e5e7eb; font-size: 14px; color: #6b7280; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f4f4f7; color: #333; }
+        .wrap { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+        .header { background: ${accentColor}; padding: 32px 24px; text-align: center; }
+        .header h1 { color: #fff; font-size: 22px; font-weight: 700; }
+        .body { padding: 32px 24px; }
+        .info-box { background: #f8fafc; border-left: 4px solid ${accentColor}; border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 20px 0; }
+        .info-box p { margin-bottom: 6px; font-size: 14px; color: #555; }
+        .info-box p:last-child { margin-bottom: 0; }
+        .info-box strong { color: #111; }
+        .price-box { background: #eff6ff; border-radius: 8px; padding: 14px; text-align: center; margin: 20px 0; font-size: 18px; font-weight: 700; color: ${accentColor}; }
+        .btn { display: inline-block; background: ${accentColor}; color: #fff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; }
+        .alert { background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 13px; color: #92400e; margin: 16px 0; }
+        .footer { background: #f8fafc; padding: 20px 24px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
+        p { line-height: 1.6; margin-bottom: 12px; }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div class="header">
-          <h1>🎉 Pagamento Confirmado!</h1>
-        </div>
-        <div class="content">
-          <div class="success-icon">✅</div>
-          <div class="message">
-            <p>Olá, <strong>${barbershopName}</strong>!</p>
-            <p>Seu pagamento foi processado com sucesso e sua assinatura está ativa! 🚀</p>
-            <p>Agora você tem acesso completo a todos os recursos do <strong>BarberFlow</strong>.</p>
-          </div>
-          <div class="plan-details">
-            <h2>📋 Detalhes da Assinatura</h2>
-            <div class="detail-row">
-              <span class="detail-label">Plano</span>
-              <span class="detail-value">${planName}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Período</span>
-              <span class="detail-value">${periodName}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Valor Pago</span>
-              <span class="detail-value">${formattedAmount}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Renovação em</span>
-              <span class="detail-value">${formattedDate}</span>
-            </div>
-          </div>
-          <div class="highlight">
-            <p style="margin:0;"><strong>💡 Dica:</strong> Aproveite todos os recursos disponíveis no seu plano para maximizar os resultados da sua barbearia!</p>
-          </div>
-          <div style="text-align: center;">
-            <a href="${process.env.FRONTEND_URL}/dashboard" class="cta-button">
-              Acessar Painel de Controle
-            </a>
-          </div>
-          <div class="support">
-            <p><strong>Precisa de ajuda?</strong></p>
-            <p>Nossa equipe está pronta para te ajudar!</p>
-            <p>Email: ${process.env.EMAIL_USER}</p>
-            <p>WhatsApp: (11) 98394-3905</p>
-          </div>
-        </div>
+      <div class="wrap">
+        ${content}
         <div class="footer">
+          <p>© ${new Date().getFullYear()} BarberFlow — Sistema de Agendamento para Barbearias</p>
           <p>Este é um email automático, por favor não responda.</p>
-          <p>© 2025 <strong>BarberFlow</strong>. Todos os direitos reservados.</p>
         </div>
       </div>
     </body>
     </html>
   `;
-
-  try {
-    await sendEmail({
-      to: to,
-      subject: `✅ Pagamento Confirmado - ${planName} - BarberFlow`,
-      html: html
-    });
-    console.log('✅ Email de confirmação de pagamento enviado');
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Erro ao enviar email de confirmação:', error);
-    throw error;
-  }
 }
 
-// ✅ NOVO: Email de lembrete de renovação
-export async function sendRenewalReminderEmail(data: {
-  to: string;
-  barbershopName: string;
-  planName: string;
-  expiresAt: Date;
-  daysLeft: number;
+// ─────────────────────────────────────────────────────────────────────────────
+// Templates existentes (mantidos para compatibilidade)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function appointmentReminderTemplate(data: {
+  customerName: string; serviceName: string; date: string;
+  time: string; barberName: string; barbershopName: string;
 }) {
-  const { to, barbershopName, planName, expiresAt, daysLeft } = data;
-
-  const formattedDate = expiresAt.toLocaleDateString('pt-BR', { 
-    day: '2-digit', 
-    month: 'long', 
-    year: 'numeric' 
-  });
-
-  const html = `
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f7; }
-        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; }
-        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 40px 20px; text-align: center; }
-        .header h1 { color: #ffffff; margin: 0; font-size: 28px; }
-        .content { padding: 40px 30px; }
-        .warning-box { background-color: #fef3c7; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0; }
-        .cta-button { display: inline-block; background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; margin: 20px 0; }
-        .footer { background-color: #f9fafb; padding: 30px; text-align: center; font-size: 14px; color: #6b7280; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>⏰ Lembrete de Renovação</h1>
-        </div>
-        <div class="content">
-          <p>Olá, <strong>${barbershopName}</strong>!</p>
-          <div class="warning-box">
-            <p style="margin:0; color:#92400e; font-size:16px;">
-              <strong>⚠️ Atenção:</strong> Sua assinatura do <strong>${planName}</strong> expira em <strong>${daysLeft} dia(s)</strong>!
-            </p>
-            <p style="margin:10px 0 0 0; color:#92400e;">
-              Data de expiração: <strong>${formattedDate}</strong>
-            </p>
-          </div>
-          <p>Para continuar aproveitando todos os recursos do BarberFlow sem interrupções, renove sua assinatura agora!</p>
-          <div style="text-align: center;">
-            <a href="${process.env.FRONTEND_URL}/planos" class="cta-button">Renovar Assinatura</a>
-          </div>
-        </div>
-        <div class="footer">
-          <p>© 2025 <strong>BarberFlow</strong>. Todos os direitos reservados.</p>
-        </div>
+  return baseTemplate(`
+    <div class="header"><h1>⏰ Lembrete de Agendamento</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.customerName}</strong>,</p>
+      <p>Este é um lembrete do seu agendamento na <strong>${data.barbershopName}</strong>!</p>
+      <div class="info-box">
+        <p><strong>📅 Data:</strong> ${data.date}</p>
+        <p><strong>🕐 Horário:</strong> ${data.time}</p>
+        <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
+        <p><strong>👤 Profissional:</strong> ${data.barberName}</p>
       </div>
-    </body>
-    </html>
-  `;
-
-  try {
-    await sendEmail({
-      to: to,
-      subject: `⏰ Sua assinatura expira em ${daysLeft} dia(s) - BarberFlow`,
-      html: html
-    });
-    console.log('✅ Email de lembrete de renovação enviado');
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Erro ao enviar lembrete de renovação:', error);
-    throw error;
-  }
+      <div class="alert">⏰ Por favor, chegue com 5 minutos de antecedência.</div>
+    </div>
+  `);
 }
 
+export function appointmentConfirmationTemplate(data: {
+  customerName: string; serviceName: string; date: string;
+  time: string; barberName: string; barbershopName: string; price: string;
+}) {
+  return baseTemplate(`
+    <div class="header"><h1>✅ Agendamento Confirmado!</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.customerName}</strong>,</p>
+      <p>Seu agendamento foi confirmado com sucesso na <strong>${data.barbershopName}</strong>!</p>
+      <div class="info-box">
+        <p><strong>📅 Data:</strong> ${data.date}</p>
+        <p><strong>🕐 Horário:</strong> ${data.time}</p>
+        <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
+        <p><strong>👤 Profissional:</strong> ${data.barberName}</p>
+      </div>
+      <div class="price-box">💰 Valor: R$ ${data.price}</div>
+      <p>Você receberá um lembrete 24 horas antes do seu horário.</p>
+    </div>
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NOVO: Confirmação de agendamento para CLIENTE (sistema público)
+// ─────────────────────────────────────────────────────────────────────────────
+export function clientAppointmentConfirmationTemplate(data: {
+  clientName: string; serviceName: string; date: string; time: string;
+  barberName: string; barbershopName: string; barbershopAddress: string;
+  barbershopPhone: string; price: string;
+}) {
+  return baseTemplate(`
+    <div class="header"><h1>✅ Agendamento Confirmado!</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.clientName}</strong>,</p>
+      <p>Seu agendamento foi confirmado com sucesso!</p>
+      <div class="info-box">
+        <p><strong>📍 ${data.barbershopName}</strong></p>
+        <p><strong>📅 Data:</strong> ${data.date}</p>
+        <p><strong>🕐 Horário:</strong> ${data.time}</p>
+        <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
+        <p><strong>👤 Barbeiro:</strong> ${data.barberName}</p>
+        <p><strong>📍 Endereço:</strong> ${data.barbershopAddress}</p>
+        <p><strong>📞 Telefone:</strong> ${data.barbershopPhone}</p>
+      </div>
+      <div class="price-box">💰 Valor: R$ ${data.price}</div>
+      <div class="alert">⏰ Chegue com 5 minutos de antecedência para não perder seu horário!</div>
+      <p>Você receberá um lembrete 24h antes do seu agendamento.</p>
+    </div>
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NOVO: Lembrete para CLIENTE (24h antes)
+// ─────────────────────────────────────────────────────────────────────────────
+export function clientReminderTemplate(data: {
+  clientName: string; serviceName: string; date: string; time: string;
+  barberName: string; barbershopName: string; barbershopAddress: string;
+  barbershopPhone: string;
+}) {
+  return baseTemplate(`
+    <div class="header" style="background:#f59e0b"><h1>🔔 Lembrete: Amanhã é seu dia!</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.clientName}</strong>,</p>
+      <p>Não esqueça! Seu agendamento é <strong>amanhã</strong>:</p>
+      <div class="info-box">
+        <p><strong>📍 ${data.barbershopName}</strong></p>
+        <p><strong>📅 Data:</strong> ${data.date}</p>
+        <p><strong>🕐 Horário:</strong> ${data.time}</p>
+        <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
+        <p><strong>👤 Barbeiro:</strong> ${data.barberName}</p>
+        <p><strong>📍 Endereço:</strong> ${data.barbershopAddress}</p>
+        <p><strong>📞 Telefone:</strong> ${data.barbershopPhone}</p>
+      </div>
+      <div class="alert">⏰ Chegue com 5 minutos de antecedência! Caso precise cancelar, entre em contato com a barbearia com pelo menos 2 horas de antecedência.</div>
+    </div>
+  `, '#f59e0b');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NOVO: Cancelamento para CLIENTE
+// ─────────────────────────────────────────────────────────────────────────────
+export function clientCancellationTemplate(data: {
+  clientName: string; serviceName: string; date: string;
+  time: string; barbershopName: string;
+}) {
+  return baseTemplate(`
+    <div class="header" style="background:#dc2626"><h1>❌ Agendamento Cancelado</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.clientName}</strong>,</p>
+      <p>Seu agendamento foi cancelado conforme solicitado.</p>
+      <div class="info-box">
+        <p><strong>📍 Barbearia:</strong> ${data.barbershopName}</p>
+        <p><strong>📅 Data:</strong> ${data.date}</p>
+        <p><strong>🕐 Horário:</strong> ${data.time}</p>
+        <p><strong>✂️ Serviço:</strong> ${data.serviceName}</p>
+      </div>
+      <p>Sentiremos sua falta! 😢 Você pode fazer um novo agendamento a qualquer momento.</p>
+    </div>
+  `, '#dc2626');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NOVO: Verificação de telefone por email (OTP de perfil)
+// ─────────────────────────────────────────────────────────────────────────────
+export function phoneVerificationEmailTemplate(data: {
+  clientName: string; otp: string;
+}) {
+  return baseTemplate(`
+    <div class="header"><h1>🔐 Verificação de Telefone</h1></div>
+    <div class="body">
+      <p>Olá <strong>${data.clientName}</strong>,</p>
+      <p>Seu código de verificação de telefone é:</p>
+      <div class="price-box" style="font-size:32px;letter-spacing:0.3em">${data.otp}</div>
+      <p style="text-align:center;color:#666;font-size:13px">Válido por <strong>15 minutos</strong></p>
+      <div class="alert">🔒 Nunca compartilhe este código com ninguém. O BarberFlow jamais solicita seu código por telefone.</div>
+    </div>
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recuperação de senha
+// ─────────────────────────────────────────────────────────────────────────────
 export const sendPasswordResetEmail = async (
   email: string,
   name: string,
   resetUrl: string
 ) => {
-  const emailHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #2463eb 0%, #1d4fd8 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .header h1 { margin: 0; font-size: 28px; }
-        .content { background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none; }
-        .content h2 { color: #1f2937; margin-top: 0; }
-        .button { display: inline-block; background: #2463eb; color: white !important; padding: 14px 40px; text-decoration: none; border-radius: 8px; margin: 25px 0; font-weight: bold; font-size: 16px; }
-        .button:hover { background: #1d4fd8; }
-        .link-box { background: #f9fafb; padding: 15px; border: 1px solid #e5e7eb; border-radius: 6px; word-break: break-all; font-size: 14px; color: #6b7280; margin: 20px 0; }
-        .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 20px 0; border-radius: 4px; }
-        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🔐 BarberFlow</h1>
-        </div>
-        <div class="content">
-          <h2>Recuperação de Senha</h2>
-          <p>Olá, <strong>${name}</strong>!</p>
-          <p>Recebemos uma solicitação para redefinir sua senha no BarberFlow. Clique no botão abaixo para criar uma nova senha:</p>
-          
-          <div style="text-align: center;">
-            <a href="${resetUrl}" class="button">Redefinir Minha Senha</a>
-          </div>
-          
-          <p>Ou copie e cole este link no seu navegador:</p>
-          <div class="link-box">${resetUrl}</div>
-          
-          <div class="warning">
-            <strong>⚠️ Atenção:</strong> Este link expira em <strong>1 hora</strong> por motivos de segurança.
-          </div>
-          
-          <p style="margin-top: 30px; font-size: 14px; color: #6b7280;">
-            Se você não solicitou a recuperação de senha, ignore este email. Sua senha permanecerá inalterada e segura.
-          </p>
-        </div>
-        <div class="footer">
-          <p>© 2025 BarberFlow. Todos os direitos reservados.</p>
-          <p>Este é um email automático, por favor não responda.</p>
-        </div>
+  const html = baseTemplate(`
+    <div class="header"><h1>🔐 Recuperação de Senha</h1></div>
+    <div class="body">
+      <p>Olá, <strong>${name}</strong>!</p>
+      <p>Recebemos uma solicitação para redefinir sua senha no BarberFlow.</p>
+      <div style="text-align:center">
+        <a href="${resetUrl}" class="btn">Redefinir Minha Senha</a>
       </div>
-    </body>
-    </html>
-  `;
+      <p style="margin-top:16px;font-size:13px;color:#666">Ou copie e cole este link no navegador:</p>
+      <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:12px;color:#6b7280;word-break:break-all">${resetUrl}</div>
+      <div class="alert" style="margin-top:16px">⚠️ Este link expira em <strong>1 hora</strong>. Se você não solicitou, ignore este email.</div>
+    </div>
+  `);
 
   await sendEmail({
     to: email,
-    subject: '🔐 Recuperação de Senha - BarberFlow',
-    html: emailHtml,
+    subject: '🔐 Recuperação de Senha — BarberFlow',
+    html,
   });
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Confirmação de pagamento
+// ─────────────────────────────────────────────────────────────────────────────
+interface PaymentConfirmationData {
+  to: string; barbershopName: string; planName: string;
+  amount: number; period: string; expiresAt: Date;
+}
+
+export async function sendPaymentConfirmationEmail(data: PaymentConfirmationData) {
+  const periodNames: Record<string, string> = {
+    monthly: 'Mensal', semiannual: 'Semestral', annual: 'Anual'
+  };
+  const formattedAmount = data.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formattedDate   = data.expiresAt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const html = baseTemplate(`
+    <div class="header" style="background:#7c3aed"><h1>🎉 Pagamento Confirmado!</h1></div>
+    <div class="body">
+      <p>Olá, <strong>${data.barbershopName}</strong>!</p>
+      <p>Seu pagamento foi processado com sucesso e sua assinatura está ativa! 🚀</p>
+      <div class="info-box">
+        <p><strong>📋 Plano:</strong> ${data.planName}</p>
+        <p><strong>📅 Período:</strong> ${periodNames[data.period] || 'Mensal'}</p>
+        <p><strong>💰 Valor:</strong> ${formattedAmount}</p>
+        <p><strong>🔄 Renovação em:</strong> ${formattedDate}</p>
+      </div>
+      <div style="text-align:center">
+        <a href="${process.env.FRONTEND_URL}/dashboard" class="btn" style="background:#7c3aed">Acessar Painel</a>
+      </div>
+    </div>
+  `, '#7c3aed');
+
+  await sendEmail({ to: data.to, subject: `✅ Pagamento Confirmado — ${data.planName} — BarberFlow`, html });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lembrete de renovação
+// ─────────────────────────────────────────────────────────────────────────────
+export async function sendRenewalReminderEmail(data: {
+  to: string; barbershopName: string; planName: string;
+  expiresAt: Date; daysLeft: number;
+}) {
+  const formattedDate = data.expiresAt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const html = baseTemplate(`
+    <div class="header" style="background:#f59e0b"><h1>⏰ Lembrete de Renovação</h1></div>
+    <div class="body">
+      <p>Olá, <strong>${data.barbershopName}</strong>!</p>
+      <div class="alert">
+        ⚠️ Sua assinatura do <strong>${data.planName}</strong> expira em <strong>${data.daysLeft} dia(s)</strong> — <strong>${formattedDate}</strong>
+      </div>
+      <p>Renove agora para continuar sem interrupções!</p>
+      <div style="text-align:center">
+        <a href="${process.env.FRONTEND_URL}/planos" class="btn" style="background:#f59e0b;color:#fff">Renovar Assinatura</a>
+      </div>
+    </div>
+  `, '#f59e0b');
+
+  await sendEmail({ to: data.to, subject: `⏰ Sua assinatura expira em ${data.daysLeft} dia(s) — BarberFlow`, html });
+}
 
 export default transporter;

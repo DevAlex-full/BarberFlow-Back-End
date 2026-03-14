@@ -62,9 +62,22 @@ function parseState(stateRaw?: string): string | null {
   }
 }
 
+/** Extrai e valida o token JWT do header Authorization */
+function extractClientId(req: Request): string {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) throw { status: 401, message: 'Token não fornecido' };
+
+  const [, token] = authHeader.split(' ');
+  const decoded = jwt.verify(
+    token, process.env.JWT_SECRET || 'your-secret-key'
+  ) as { id: string; type: string };
+
+  if (decoded.type !== 'client') throw { status: 401, message: 'Token inválido' };
+  return decoded.id;
+}
+
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
 
-// Inicia fluxo — codifica redirect_uri no state
 router.get('/google', (req: Request, res: Response, next) => {
   const redirectUri = (req.query.redirect_uri as string) || null;
   console.log('🔵 Google OAuth iniciado | redirect_uri:', redirectUri);
@@ -76,7 +89,6 @@ router.get('/google', (req: Request, res: Response, next) => {
   })(req, res, next);
 });
 
-// Callback do Google
 router.get(
   '/google/callback',
   (req: Request, res: Response, next) => {
@@ -121,7 +133,6 @@ router.get(
 
 // ─── Facebook OAuth ────────────────────────────────────────────────────────────
 
-// Inicia fluxo — codifica redirect_uri no state
 router.get('/facebook', (req: Request, res: Response, next) => {
   const redirectUri = (req.query.redirect_uri as string) || null;
   console.log('🔵 Facebook OAuth iniciado | redirect_uri:', redirectUri);
@@ -133,7 +144,6 @@ router.get('/facebook', (req: Request, res: Response, next) => {
   })(req, res, next);
 });
 
-// Callback do Facebook
 router.get(
   '/facebook/callback',
   (req: Request, res: Response, next) => {
@@ -264,26 +274,24 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ✅ GET /me — retorna dados do cliente autenticado (inclui campos de perfil)
 router.get('/me', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Token não fornecido' });
-
-    const [, token] = authHeader.split(' ');
-    const decoded = jwt.verify(
-      token, process.env.JWT_SECRET || 'your-secret-key'
-    ) as { id: string; type: string };
-
-    if (decoded.type !== 'client') return res.status(401).json({ error: 'Token inválido' });
+    const clientId = extractClientId(req);
 
     const client = await prisma.client.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, name: true, email: true, phone: true, avatar: true, birthDate: true, createdAt: true },
+      where: { id: clientId },
+      select: {
+        id: true, name: true, email: true, phone: true,
+        avatar: true, birthDate: true, createdAt: true,
+        nameChangedAt: true, phoneVerified: true,
+      },
     });
 
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
     return res.json(client);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     console.error('Erro ao buscar dados:', error);
     return res.status(401).json({ error: 'Token inválido' });
   }
@@ -314,5 +322,152 @@ router.get('/validate-reset-token', async (req, res) => {
 
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+
+// ─── Perfil do Cliente ─────────────────────────────────────────────────────────
+
+// ✅ PUT /profile — Atualiza nome (regra 30 dias)
+router.put('/profile', async (req, res) => {
+  try {
+    const clientId = extractClientId(req);
+
+    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    const { name } = req.body;
+    const updateData: any = {};
+
+    // Regra 30 dias para nome
+    if (name && name.trim() && name.trim() !== client.name) {
+      if (client.nameChangedAt) {
+        const daysSince =
+          (Date.now() - new Date(client.nameChangedAt).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince < 30) {
+          const daysLeft = Math.ceil(30 - daysSince);
+          return res.status(400).json({
+            error: `Você só pode alterar o nome novamente em ${daysLeft} dia(s).`,
+            daysLeft,
+          });
+        }
+      }
+      updateData.name         = name.trim();
+      updateData.nameChangedAt = new Date();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'Nenhuma alteração detectada.' });
+    }
+
+    const updated = await prisma.client.update({
+      where: { id: clientId },
+      data:  updateData,
+      select: {
+        id: true, name: true, email: true, phone: true,
+        nameChangedAt: true, phoneVerified: true,
+      },
+    });
+
+    console.log('✅ Perfil atualizado:', updated.email);
+    return res.json(updated);
+  } catch (error: any) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('Erro ao atualizar perfil:', error);
+    return res.status(500).json({ error: 'Erro ao atualizar perfil' });
+  }
+});
+
+// ✅ POST /request-phone-verification — Gera OTP e envia por SMS
+router.post('/request-phone-verification', async (req, res) => {
+  try {
+    const clientId = extractClientId(req);
+
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Telefone obrigatório.' });
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+      return res.status(400).json({ error: 'Número de telefone inválido. Use DDD + número.' });
+    }
+
+    // Gera OTP de 6 dígitos e define expiração de 15 minutos
+    const otp     = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.client.update({
+      where: { id: clientId },
+      data:  { phoneOtp: otp, phoneOtpExpires: expires },
+    });
+
+    // Formata para padrão internacional (+55 Brasil)
+    const formattedPhone = `+55${cleanPhone}`;
+
+    const { sendSMS } = await import('../services/sms.service');
+    const sent = await sendSMS(
+      formattedPhone,
+      `BarberFlow: Seu codigo de verificacao e ${otp}. Valido por 15 minutos. Nao compartilhe.`
+    );
+
+    if (!sent) {
+      // SMS não configurado — retorna sucesso mas avisa no log
+      console.warn('⚠️ SMS não enviado (Twilio não configurado). OTP gerado:', otp);
+    }
+
+    return res.json({ message: 'Código enviado por SMS com sucesso.' });
+  } catch (error: any) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('Erro ao enviar OTP:', error);
+    return res.status(500).json({ error: 'Erro ao enviar SMS de verificação.' });
+  }
+});
+
+// ✅ POST /verify-phone — Valida OTP e salva telefone verificado
+router.post('/verify-phone', async (req, res) => {
+  try {
+    const clientId = extractClientId(req);
+
+    const { phone, otp } = req.body;
+    if (!phone || !otp) {
+      return res.status(400).json({ error: 'Telefone e código são obrigatórios.' });
+    }
+
+    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    if (!client.phoneOtp || !client.phoneOtpExpires) {
+      return res.status(400).json({
+        error: 'Nenhum código de verificação pendente. Solicite um novo.',
+      });
+    }
+
+    if (new Date() > client.phoneOtpExpires) {
+      return res.status(400).json({ error: 'Código expirado. Solicite um novo.' });
+    }
+
+    if (client.phoneOtp !== otp.trim()) {
+      return res.status(400).json({ error: 'Código inválido. Verifique e tente novamente.' });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    const updated = await prisma.client.update({
+      where: { id: clientId },
+      data: {
+        phone:           cleanPhone,
+        phoneOtp:        null,
+        phoneOtpExpires: null,
+        phoneVerified:   true,
+      },
+      select: {
+        id: true, name: true, email: true, phone: true, phoneVerified: true,
+      },
+    });
+
+    console.log('✅ Telefone verificado:', updated.phone);
+    return res.json(updated);
+  } catch (error: any) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('Erro ao verificar OTP:', error);
+    return res.status(500).json({ error: 'Erro ao verificar código.' });
+  }
+});
 
 export default router;
