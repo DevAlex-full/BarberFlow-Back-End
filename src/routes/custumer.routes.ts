@@ -8,8 +8,14 @@ const router = Router();
 // Listar clientes
 router.get('/', authMiddleware, checkPlanActive, async (req, res) => {
   try {
+    const { search } = req.query;
+    const where: any = { barbershopId: req.user!.barbershopId! };
+    if (search) {
+      where.name = { contains: search as string, mode: 'insensitive' };
+    }
+
     const customers = await prisma.customer.findMany({
-      where: { barbershopId: req.user!.barbershopId! },
+      where,
       include: {
         _count: {
           select: { appointments: true }

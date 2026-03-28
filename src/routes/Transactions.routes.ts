@@ -129,9 +129,12 @@ router.get('/summary', authMiddleware, async (req, res) => {
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
-    const { type, category, description, amount, date, paymentMethod, status } = req.body;
+    const {
+      type, category, description, amount, date, paymentMethod, status,
+      // Novos campos para receita manual
+      barberId, customerId, customerName, customerPhone, serviceName
+    } = req.body;
 
-    // Validações
     if (!type || !['income', 'expense'].includes(type)) {
       return res.status(400).json({ error: 'Tipo inválido (use income ou expense)' });
     }
@@ -144,6 +147,30 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Valor deve ser maior que zero' });
     }
 
+    // Validação extra para receita com barbeiro
+    if (type === 'income' && barberId) {
+      if (!serviceName) {
+        return res.status(400).json({ error: 'Serviço é obrigatório para receitas com barbeiro' });
+      }
+      if (!customerId && !customerName) {
+        return res.status(400).json({ error: 'Cliente é obrigatório para receitas com barbeiro' });
+      }
+    }
+
+    // Se novo cliente, salvar na tabela customers
+    let finalCustomerId = customerId || null;
+    if (type === 'income' && barberId && !customerId && customerName) {
+      const newCustomer = await prisma.customer.create({
+        data: {
+          name: customerName.trim(),
+          phone: customerPhone?.replace(/\D/g, '') || '00000000000',
+          barbershopId,
+          active: true
+        }
+      });
+      finalCustomerId = newCustomer.id;
+    }
+
     const transaction = await prisma.transaction.create({
       data: {
         barbershopId,
@@ -153,9 +180,35 @@ router.post('/', authMiddleware, async (req, res) => {
         amount,
         date: date ? new Date(date) : new Date(),
         paymentMethod: paymentMethod || null,
-        status: status || 'completed'
+        status: status || 'completed',
+        barberId: barberId || null,
+        customerId: finalCustomerId,
+        serviceName: serviceName || null
       }
     });
+
+    // Gerar comissão automaticamente para receita com barbeiro
+    if (type === 'income' && barberId) {
+      const barber = await prisma.user.findUnique({
+        where: { id: barberId },
+        select: { commissionPercentage: true }
+      });
+
+      if (barber) {
+        const commissionAmount = (Number(amount) * barber.commissionPercentage) / 100;
+        const now = new Date();
+        await prisma.commission.create({
+          data: {
+            barberId,
+            barbershopId,
+            percentage: barber.commissionPercentage,
+            amount: commissionAmount,
+            referenceMonth: new Date(now.getFullYear(), now.getMonth(), 1),
+            status: 'pending'
+          }
+        });
+      }
+    }
 
     return res.status(201).json(transaction);
   } catch (error) {

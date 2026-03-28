@@ -7,8 +7,15 @@ const router = Router();
 // Listar serviços
 router.get('/', authMiddleware, async (req, res) => {
   try {
+    const { search, active } = req.query;
+    const where: any = { barbershopId: req.user!.barbershopId! };
+    if (search) {
+      where.name = { contains: search as string, mode: 'insensitive' };
+    }
+    if (active === 'true') where.active = true;
+
     const services = await prisma.service.findMany({
-      where: { barbershopId: req.user!.barbershopId! },
+      where,
       include: { barber: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' }
     });

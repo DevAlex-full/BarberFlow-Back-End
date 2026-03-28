@@ -44,9 +44,10 @@ model User {
   barbershop   Barbershop? @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String?
 
-  appointments    Appointment[]
+  appointments     Appointment[]
   servicesProvided Service[]
-  commissions     Commission[]
+  commissions      Commission[]
+  transactions     Transaction[] @relation("BarberTransactions")
   
   @@map("users")
 }
@@ -128,7 +129,14 @@ model Transaction {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ✅ Campos para receita manual (barbeiro + cliente + serviço)
+  barberId    String?
+  customerId  String?
+  serviceName String?
+
   barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  barber     User?      @relation("BarberTransactions", fields: [barberId], references: [id], onDelete: SetNull)
+  customer   Customer?  @relation("CustomerTransactions", fields: [customerId], references: [id], onDelete: SetNull)
 
   @@map("transactions")
 }
@@ -242,6 +250,7 @@ model Customer {
   barbershopId String
 
   appointments Appointment[]
+  transactions Transaction[] @relation("CustomerTransactions")
   
   @@map("customers")
 }

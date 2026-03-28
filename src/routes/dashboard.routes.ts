@@ -16,12 +16,12 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
 
-    // ✅ OTIMIZAÇÃO: Fazer queries em paralelo com Promise.all (reduz de 6 para 2 conexões)
     const [
       totalCustomers,
       totalServices,
       todayAppointments,
       monthRevenue,
+      monthTransactionRevenue,
       monthAppointments,
       upcomingAppointments
     ] = await Promise.all([
@@ -45,6 +45,16 @@ router.get('/stats', authMiddleware, async (req, res) => {
         },
         _sum: { price: true }
       }),
+      // ✅ FIX: inclui receitas manuais (transações) além dos agendamentos
+      prisma.transaction.aggregate({
+        where: {
+          barbershopId,
+          type: 'income',
+          status: 'completed',
+          date: { gte: firstDayOfMonth, lte: lastDayOfMonth }
+        },
+        _sum: { amount: true }
+      }),
       prisma.appointment.count({
         where: {
           barbershopId,
@@ -67,11 +77,16 @@ router.get('/stats', authMiddleware, async (req, res) => {
       })
     ]);
 
+    // ✅ FIX: soma agendamentos + transações manuais
+    const totalMonthRevenue =
+      Number(monthRevenue._sum.price || 0) +
+      Number(monthTransactionRevenue._sum.amount || 0);
+
     return res.json({
       totalCustomers,
       totalServices,
       todayAppointments,
-      monthRevenue: monthRevenue._sum.price || 0,
+      monthRevenue: totalMonthRevenue,
       monthAppointments,
       upcomingAppointments
     });
@@ -89,46 +104,55 @@ router.get('/charts', authMiddleware, async (req, res) => {
 
     // ========================================
     // 📈 RECEITA MENSAL (últimos 12 meses)
-    // ✅ OTIMIZAÇÃO: Fazer tudo em uma única query
     // ========================================
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
-    // Calcular data de 12 meses atrás
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    
-    // Buscar todos os appointments dos últimos 12 meses de uma vez
-    const allAppointments = await prisma.appointment.findMany({
-      where: {
-        barbershopId,
-        status: 'completed',
-        date: { gte: twelveMonthsAgo }
-      },
-      select: {
-        date: true,
-        price: true
-      }
-    });
 
-    // Processar dados no JavaScript (evita múltiplas queries)
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    // Buscar agendamentos e transações dos últimos 12 meses em paralelo
+    const [allAppointments, allTransactions] = await Promise.all([
+      prisma.appointment.findMany({
+        where: {
+          barbershopId,
+          status: 'completed',
+          date: { gte: twelveMonthsAgo }
+        },
+        select: { date: true, price: true }
+      }),
+      prisma.transaction.findMany({
+        where: {
+          barbershopId,
+          type: 'income',
+          status: 'completed',
+          date: { gte: twelveMonthsAgo }
+        },
+        select: { date: true, amount: true }
+      })
+    ]);
+
     const revenueChart = [];
     for (let i = 11; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
       const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthRevenue = allAppointments
+      const appointmentRevenue = allAppointments
         .filter(apt => apt.date >= firstDay && apt.date <= lastDay)
         .reduce((sum, apt) => sum + Number(apt.price || 0), 0);
 
+      // ✅ FIX: inclui transações manuais no gráfico de receita
+      const transactionRevenue = allTransactions
+        .filter(t => t.date >= firstDay && t.date <= lastDay)
+        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
       revenueChart.push({
         month: monthNames[date.getMonth()],
-        revenue: monthRevenue
+        revenue: appointmentRevenue + transactionRevenue
       });
     }
 
     // ========================================
     // 📅 AGENDAMENTOS DIÁRIOS (últimos 30 dias)
-    // ✅ OTIMIZAÇÃO: Query única + processamento em JS
     // ========================================
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
@@ -147,7 +171,7 @@ router.get('/charts', authMiddleware, async (req, res) => {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
-      
+
       const nextDay = new Date(date);
       nextDay.setDate(nextDay.getDate() + 1);
 
@@ -198,7 +222,6 @@ router.get('/charts', authMiddleware, async (req, res) => {
 
     // ========================================
     // 📊 TAXA DE OCUPAÇÃO (últimos 30 dias)
-    // ✅ Reutiliza dados já carregados
     // ========================================
     const totalAppointmentsLast30Days = allAppointmentsLast30.length;
 
@@ -207,45 +230,52 @@ router.get('/charts', authMiddleware, async (req, res) => {
     });
 
     const numberOfBarbers = barbersCount || 1;
-    const slotsPerDay = 20; // 10h de trabalho, 30min por slot
+    const slotsPerDay = 20;
     const totalSlots = slotsPerDay * 30 * numberOfBarbers;
     const occupancyRate = totalSlots > 0 ? (totalAppointmentsLast30Days / totalSlots) * 100 : 0;
 
     // ========================================
     // 📈 COMPARATIVO: MÊS ATUAL VS ANTERIOR
-    // ✅ Reutiliza dados já carregados
     // ========================================
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
-    // Filtrar appointments já carregados
     const currentMonthApts = allAppointments.filter(
       apt => apt.date >= currentMonthStart && apt.date <= currentMonthEnd
     );
-
     const previousMonthApts = allAppointments.filter(
       apt => apt.date >= previousMonthStart && apt.date <= previousMonthEnd
     );
 
-    const currentRevenue = currentMonthApts.reduce((sum, apt) => sum + Number(apt.price || 0), 0);
-    const previousRevenue = previousMonthApts.reduce((sum, apt) => sum + Number(apt.price || 0), 0);
+    const currentMonthTxs = allTransactions.filter(
+      t => t.date >= currentMonthStart && t.date <= currentMonthEnd
+    );
+    const previousMonthTxs = allTransactions.filter(
+      t => t.date >= previousMonthStart && t.date <= previousMonthEnd
+    );
+
+    // ✅ FIX: soma agendamentos + transações manuais no comparativo
+    const currentRevenue =
+      currentMonthApts.reduce((sum, apt) => sum + Number(apt.price || 0), 0) +
+      currentMonthTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const previousRevenue =
+      previousMonthApts.reduce((sum, apt) => sum + Number(apt.price || 0), 0) +
+      previousMonthTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     const currentMonthAppointments = currentMonthApts.length;
     const previousMonthAppointments = previousMonthApts.length;
 
-    const revenueGrowth = previousRevenue > 0 
-      ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 
+    const revenueGrowth = previousRevenue > 0
+      ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
       : 0;
 
     const appointmentsGrowth = previousMonthAppointments > 0
       ? ((currentMonthAppointments - previousMonthAppointments) / previousMonthAppointments) * 100
       : 0;
 
-    // ========================================
-    // 📦 RESPOSTA FINAL
-    // ========================================
     return res.json({
       revenueChart,
       appointmentsChart,
