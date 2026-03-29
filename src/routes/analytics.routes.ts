@@ -32,17 +32,16 @@ router.get('/overview', authMiddleware, async (req, res) => {
     const heatmap = Array(7).fill(null).map(() => Array(24).fill(0));
     
     appointments.forEach(apt => {
-      const day = apt.date.getDay(); // 0-6 (domingo-sábado)
-      const hour = apt.date.getHours(); // 0-23
+      const day = apt.date.getDay();
+      const hour = apt.date.getHours();
       heatmap[day][hour]++;
     });
 
-    // Converter para formato mais amigável
     const heatmapData = [];
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
     for (let day = 0; day < 7; day++) {
-      for (let hour = 8; hour < 20; hour++) { // Apenas horário comercial
+      for (let hour = 8; hour < 20; hour++) {
         heatmapData.push({
           day: days[day],
           hour: `${hour}:00`,
@@ -90,14 +89,37 @@ router.get('/overview', authMiddleware, async (req, res) => {
       }
     });
 
-    const barberPerformance = barbers.map(barber => ({
-      name: barber.name,
-      appointments: barber.appointments.length,
-      revenue: barber.appointments.reduce((sum, apt) => sum + Number(apt.price), 0),
-      averageTicket: barber.appointments.length > 0
-        ? barber.appointments.reduce((sum, apt) => sum + Number(apt.price), 0) / barber.appointments.length
-        : 0
-    })).sort((a, b) => b.revenue - a.revenue);
+    // ✅ FIX: inclui receitas manuais (transações) na performance do barbeiro
+    const barberTransactions = await prisma.transaction.groupBy({
+      by: ['barberId'],
+      where: {
+        barbershopId,
+        type: 'income',
+        status: 'completed',
+        date: { gte: thirtyDaysAgo },
+        barberId: { not: null }
+      },
+      _sum: { amount: true }
+    });
+
+    const barberTxMap: Record<string, number> = {};
+    barberTransactions.forEach(t => {
+      if (t.barberId) barberTxMap[t.barberId] = Number(t._sum.amount || 0);
+    });
+
+    const barberPerformance = barbers.map(barber => {
+      const aptRevenue = barber.appointments.reduce((sum, apt) => sum + Number(apt.price), 0);
+      const txRevenue = barberTxMap[barber.id] || 0;
+      const totalRevenue = aptRevenue + txRevenue;
+      return {
+        name: barber.name,
+        appointments: barber.appointments.length,
+        revenue: totalRevenue,
+        averageTicket: barber.appointments.length > 0
+          ? totalRevenue / barber.appointments.length
+          : 0
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
 
     // ========================================
     // 🎯 TAXA DE CONVERSÃO (Funil)
@@ -129,19 +151,44 @@ router.get('/overview', authMiddleware, async (req, res) => {
     // 💰 KPIS EM TEMPO REAL
     // ========================================
     const completedLast30 = allAppointmentsLast30.filter(a => a.status === 'completed');
-    const revenueLast30 = completedLast30.reduce((sum, a) => sum + Number(a.price), 0);
+    const aptRevenueLast30 = completedLast30.reduce((sum, a) => sum + Number(a.price), 0);
+
+    // ✅ FIX: inclui transações manuais nos KPIs de receita
+    const [txLast30, txPrevious30, appointmentsPrevious30] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: {
+          barbershopId,
+          type: 'income',
+          status: 'completed',
+          date: { gte: thirtyDaysAgo }
+        },
+        _sum: { amount: true }
+      }),
+      prisma.transaction.aggregate({
+        where: {
+          barbershopId,
+          type: 'income',
+          status: 'completed',
+          date: { gte: sixtyDaysAgo, lt: thirtyDaysAgo }
+        },
+        _sum: { amount: true }
+      }),
+      prisma.appointment.findMany({
+        where: {
+          barbershopId,
+          date: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
+          status: 'completed'
+        }
+      })
+    ]);
+
+    const revenueLast30 = aptRevenueLast30 + Number(txLast30._sum.amount || 0);
     const avgRevenuePerDay = revenueLast30 / 30;
 
-    // Período anterior (30-60 dias atrás)
-    const appointmentsPrevious30 = await prisma.appointment.findMany({
-      where: {
-        barbershopId,
-        date: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
-        status: 'completed'
-      }
-    });
-    
-    const revenuePrevious30 = appointmentsPrevious30.reduce((sum, a) => sum + Number(a.price), 0);
+    const revenuePrevious30 =
+      appointmentsPrevious30.reduce((sum, a) => sum + Number(a.price), 0) +
+      Number(txPrevious30._sum.amount || 0);
+
     const growthRate = revenuePrevious30 > 0 
       ? ((revenueLast30 - revenuePrevious30) / revenuePrevious30) * 100
       : 0;
@@ -162,7 +209,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
 
     const avgDaysBetweenVisits = visitPairs > 0 ? totalDaysBetweenVisits / visitPairs : 0;
 
-    // Taxa de retorno
     const returnRate = allCustomers.length > 0 
       ? (recurringCustomers / allCustomers.length) * 100 
       : 0;
@@ -181,7 +227,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
     // ========================================
     const insights = [];
 
-    // Insight 1: Melhor dia da semana
     const appointmentsByDay = Array(7).fill(0);
     allAppointmentsLast30.forEach(apt => {
       appointmentsByDay[apt.date.getDay()]++;
@@ -193,7 +238,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
       message: `Seu melhor dia é ${days[bestDayIndex]} com ${appointmentsByDay[bestDayIndex]} agendamentos!`
     });
 
-    // Insight 2: Crescimento
     if (growthRate > 10) {
       insights.push({
         type: 'success',
@@ -208,7 +252,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
       });
     }
 
-    // Insight 3: Taxa de cancelamento
     if (conversionFunnel.cancellationRate > 15) {
       insights.push({
         type: 'warning',
@@ -217,7 +260,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
       });
     }
 
-    // Insight 4: Melhor barbeiro
     if (barberPerformance.length > 0) {
       const topBarber = barberPerformance[0];
       insights.push({
@@ -227,7 +269,6 @@ router.get('/overview', authMiddleware, async (req, res) => {
       });
     }
 
-    // Insight 5: Clientes novos
     if (newCustomers > 10) {
       insights.push({
         type: 'success',
