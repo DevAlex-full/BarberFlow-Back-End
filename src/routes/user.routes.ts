@@ -192,7 +192,7 @@ router.put('/tutorial', authMiddleware, async (req, res) => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const updateData: any = {};
-    
+
     if (tutorialCompleted !== undefined) updateData.tutorialCompleted = tutorialCompleted;
     if (tutorialStep !== undefined) updateData.tutorialStep = tutorialStep;
     if (tutorialSkipped !== undefined) updateData.tutorialSkipped = tutorialSkipped;
@@ -224,9 +224,9 @@ router.put('/tutorial', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      where: { 
+      where: {
         barbershopId: req.user!.barbershopId!,
-        role: { in: ['admin', 'barber'] } // Apenas admins e barbeiros
+        role: { in: ['admin', 'barber', 'ADMIN', 'BARBER'] }
       },
       select: {
         id: true,
@@ -255,7 +255,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
 
     const user = await prisma.user.findFirst({
-      where: { 
+      where: {
         id,
         barbershopId: req.user!.barbershopId! // Garantir que é da mesma barbearia
       },
@@ -353,7 +353,7 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
 
     // Verificar se o usuário existe e pertence à mesma barbearia
     const existingUser = await prisma.user.findFirst({
-      where: { 
+      where: {
         id,
         barbershopId: req.user!.barbershopId!
       }
@@ -436,7 +436,7 @@ router.patch('/:id/toggle', authMiddleware, isAdmin, async (req, res) => {
 
     // Verificar se o usuário existe e pertence à mesma barbearia
     const existingUser = await prisma.user.findFirst({
-      where: { 
+      where: {
         id,
         barbershopId: req.user!.barbershopId!
       }
@@ -481,7 +481,7 @@ router.delete('/:id', authMiddleware, isAdmin, async (req, res) => {
 
     // Verificar se o usuário existe e pertence à mesma barbearia
     const existingUser = await prisma.user.findFirst({
-      where: { 
+      where: {
         id,
         barbershopId: req.user!.barbershopId!
       }
@@ -526,8 +526,8 @@ router.put('/:id/commission', authMiddleware, async (req, res) => {
 
     // Validar percentual
     if (commissionPercentage === undefined || commissionPercentage < 0 || commissionPercentage > 100) {
-      return res.status(400).json({ 
-        error: 'Percentual de comissão deve estar entre 0 e 100' 
+      return res.status(400).json({
+        error: 'Percentual de comissão deve estar entre 0 e 100'
       });
     }
 
@@ -574,8 +574,8 @@ router.put('/:id/commission', authMiddleware, async (req, res) => {
 
     if (!hasPermission) {
       console.log('❌ Acesso negado!');
-      return res.status(403).json({ 
-        error: 'Você não tem permissão para alterar a comissão deste usuário' 
+      return res.status(403).json({
+        error: 'Você não tem permissão para alterar a comissão deste usuário'
       });
     }
 
