@@ -9,21 +9,37 @@ const router = Router();
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const barbershop = await prisma.barbershop.findUnique({
-      where: { id: req.user!.barbershopId! },
-      include: {
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            phone: true,
-            active: true,
-            avatar: true
-          }
-        }
+  where: { id: req.user!.barbershopId! },
+  select: {
+    id: true,
+    name: true,
+    slug: true,
+    logo: true,
+    plan: true,
+    planStatus: true,
+    planExpiresAt: true,
+    trialEndsAt: true,
+    active: true,
+    email: true,
+    phone: true,
+    address: true,
+    city: true,
+    state: true,
+    maxBarbers: true,
+    maxCustomers: true,
+    users: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        active: true,
+        avatar: true
       }
-    });
+    }
+  }
+});
 
     if (!barbershop) {
       return res.status(404).json({ error: 'Barbearia não encontrada' });
