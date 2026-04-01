@@ -79,10 +79,12 @@ router.get('/barbershops/:id', async (req, res) => {
 
     console.log(`🔍 [PUBLIC] Buscando barbearia: ${id}`);
 
-    const barbershop = await prisma.barbershop.findUnique({
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    const barbershop = await prisma.barbershop.findFirst({
       where: {
-        id,
-        active: true
+        active: true,
+        ...(isUUID ? { id } : { slug: id })
       },
       select: {
         // ✅ Dados básicos
@@ -234,16 +236,16 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     // ✅ CORREÇÃO ULTRA DEFINITIVA: Criar datas EXPLICITAMENTE em horário de Brasília
     // Formato recebido: "2026-01-31" (YYYY-MM-DD)
     const dateStr = date as string;
-    
+
     // ✅ Criar string de data EXPLÍCITA no formato ISO com timezone de Brasília
     // Brasília é UTC-3, então adicionamos "T03:00:00.000Z" para que quando convertido
     // para horário local, resulte em 00:00:00 de Brasília
     const startDateStr = `${dateStr}T03:00:00.000Z`;
     const endDateStr = `${dateStr}T03:00:00.000Z`;
-    
+
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
-    
+
     // ✅ Ajustar para início e fim do dia em Brasília
     startDate.setUTCHours(3, 0, 0, 0);   // 00:00:00 Brasília = 03:00:00 UTC
     endDate.setUTCHours(26, 59, 59, 999); // 23:59:59 Brasília = 02:59:59 UTC do dia seguinte
@@ -284,7 +286,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     const [year, month, day] = dateStr.split('-').map(Number);
     const localDate = new Date(year, month - 1, day);
     const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][localDate.getDay()];
-    
+
     const businessHours = barbershop?.businessHours as any || {};
     const dayHours = businessHours[dayOfWeek] || '09:00-18:00';
 
@@ -300,7 +302,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     console.log(`⏰ [PUBLIC] Horários de ${dayOfWeek}: ${startTime} até ${endTime}`);
 
     const availableTimes: string[] = [];
-    
+
     // ✅ CORREÇÃO: Obter hora atual no horário de Brasília
     const now = new Date();
     const nowBrasiliaStr = now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
@@ -312,13 +314,13 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     let currentMinute = workStartMin;
 
     while (
-      currentHour < workEndHour || 
+      currentHour < workEndHour ||
       (currentHour === workEndHour && currentMinute < workEndMin)
     ) {
       // ✅ Criar horário em Brasília convertendo para UTC
       // Brasília é UTC-3, então subtraímos 3 horas do horário local
       const timeSlotUTC = new Date(Date.UTC(year, month - 1, day, currentHour + 3, currentMinute, 0, 0));
-      
+
       // ✅ Converter para horário de Brasília para validação
       const timeSlotBrasiliaStr = timeSlotUTC.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
       const timeSlotBrasilia = new Date(timeSlotBrasiliaStr);
@@ -352,7 +354,7 @@ router.get('/barbershops/:id/available-times', async (req, res) => {
     }
 
     console.log(`✅ [PUBLIC] ${availableTimes.length} horários disponíveis`);
-    
+
     // ✅ LOG: Mostrar os primeiros e últimos horários para debug
     if (availableTimes.length > 0) {
       const firstTime = new Date(availableTimes[0]).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
