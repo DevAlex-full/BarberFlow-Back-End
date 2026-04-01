@@ -14,6 +14,15 @@ const SUPER_ADMIN_EMAILS = [
   'appbarberflow@gmail.com'
 ];
 
+const generateSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+};
+
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -32,15 +41,20 @@ router.post('/register', async (req, res) => {
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 15);
 
+    const baseSlug = generateSlug(barbershopName);
+    const existingSlug = await prisma.barbershop.findUnique({ where: { slug: baseSlug } });
+    const finalSlug = existingSlug ? `${baseSlug}${Date.now()}` : baseSlug;
+
     const barbershop = await prisma.barbershop.create({
       data: {
         name: barbershopName,
         email: email,
         phone: barbershopPhone,
+        slug: finalSlug,
         plan: 'trial',
         planStatus: 'active',
         trialEndsAt: trialEndsAt,
-        planExpiresAt: trialEndsAt, // ✅ ADICIONADO - Mesmo valor do trial
+        planExpiresAt: trialEndsAt,
         maxBarbers: 1,
         maxCustomers: 50
       }
@@ -126,10 +140,10 @@ router.post('/login', async (req, res) => {
 
     // ✅ Para super admin, barbershopId pode ser null
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role, 
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
         barbershopId: user.barbershopId || null
       },
       process.env.JWT_SECRET!,
@@ -202,8 +216,8 @@ router.post('/forgot-password', async (req, res) => {
 
     if (!user) {
       console.log('⚠️ Email não encontrado, mas retornando sucesso por segurança');
-      return res.json({ 
-        message: 'Se o email existir, você receberá um link de recuperação' 
+      return res.json({
+        message: 'Se o email existir, você receberá um link de recuperação'
       });
     }
 
@@ -279,13 +293,13 @@ router.post('/forgot-password', async (req, res) => {
       console.error('⚠️ Erro ao enviar email:', emailError);
     }
 
-    return res.json({ 
-      message: 'Link de recuperação enviado para seu email' 
+    return res.json({
+      message: 'Link de recuperação enviado para seu email'
     });
 
   } catch (error: any) {
     console.error('❌ Erro ao processar recuperação:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Erro ao processar solicitação'
     });
   }
@@ -335,8 +349,8 @@ router.post('/reset-password', async (req, res) => {
 
     console.log('✅ Senha redefinida para:', user.email);
 
-    return res.json({ 
-      message: 'Senha redefinida com sucesso!' 
+    return res.json({
+      message: 'Senha redefinida com sucesso!'
     });
 
   } catch (error) {
