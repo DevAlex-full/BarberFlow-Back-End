@@ -55,6 +55,7 @@ model User {
 model Barbershop {
   id          String   @id @default(uuid())
   name        String
+  slug        String?   @unique
   email       String   @unique
   phone       String
   address     String?
