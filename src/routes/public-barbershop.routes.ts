@@ -52,6 +52,7 @@ router.get('/barbershops', async (req, res) => {
       select: {
         id: true,
         name: true,
+        slug: true,
         phone: true,
         address: true,
         city: true,
