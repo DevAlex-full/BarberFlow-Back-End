@@ -87,7 +87,7 @@ app.use(passport.initialize());
 console.log('🔐 Passport inicializado com sucesso!');
 
 // Servir arquivos estáticos
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
