@@ -28,13 +28,11 @@ model User {
   termsAcceptedAt    DateTime?
   privacyAccepted    Boolean   @default(false)
   privacyAcceptedAt  DateTime?
-  termsVersion       String?   // ex: "v1.0"
-  privacyVersion     String?   // ex: "v1.0"
+  termsVersion       String?
+  privacyVersion     String?
 
-  // ✅ NOVO: Preferências do usuário (notificações, tema, etc)
   preferences Json? @default("{\"emailNotifications\":true,\"smsNotifications\":false,\"whatsappNotifications\":true,\"theme\":\"light\"}")
 
-  // ✅ NOVO FASE 5: Percentual de comissão (padrão 40%)
   commissionPercentage Float @default(40)
 
   tutorialCompleted Boolean @default(false)
@@ -48,39 +46,36 @@ model User {
   servicesProvided Service[]
   commissions      Commission[]
   transactions     Transaction[] @relation("BarberTransactions")
-  
+
   @@map("users")
 }
 
 model Barbershop {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
   slug        String?   @unique
-  email       String   @unique
+  email       String    @unique
   phone       String
   address     String?
   city        String?
   state       String?
   logo        String?
-  plan        String   @default("trial") // trial, basic, premium, enterprise
-  planStatus  String   @default("active") // active, cancelled, suspended
+  plan        String    @default("trial")
+  planStatus  String    @default("active")
   trialEndsAt DateTime?
   planStartedAt DateTime @default(now())
   planExpiresAt DateTime?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  // Limites do plano
   maxBarbers   Int @default(1)
   maxCustomers Int @default(100)
 
-  // 🆕 NOVOS CAMPOS DA FASE 3 (Configurações)
   zipCode     String?
   cnpj        String?
   description String? @db.Text
 
-  // ===== CAMPOS DA LANDING PAGE (FASE 2) =====
   heroImage         String?
   heroTitle         String?
   heroSubtitle      String?
@@ -97,40 +92,41 @@ model Barbershop {
   showReviews       Boolean  @default(true)
   allowOnlineBooking Boolean @default(true)
 
-  neighborhood  String?
-  number        String?
-  complement    String?
-  latitude      Float?
-  longitude     Float?
+  neighborhood String?
+  number       String?
+  complement   String?
+  latitude     Float?
+  longitude    Float?
 
-  users           User[]
-  services        Service[]
-  appointments    Appointment[]
-  customers       Customer[]
-  subscriptions   Subscription[]
-  transactions    Transaction[]
-  commissions     Commission[]
-  goals           Goal[]
-  clientFavorites ClientFavorite[]
-  
+  users            User[]
+  services         Service[]
+  appointments     Appointment[]
+  customers        Customer[]
+  subscriptions    Subscription[]
+  transactions     Transaction[]
+  commissions      Commission[]
+  goals            Goal[]
+  clientFavorites  ClientFavorite[]
+  // ✅ NOVO
+  stockItems       StockItem[]
+  customerPackages CustomerPackage[]
+
   @@map("barbershops")
 }
 
-// ✅ Model de Transações Financeiras (Receitas e Despesas)
 model Transaction {
   id            String   @id @default(uuid())
   barbershopId  String
-  type          String   // 'income' ou 'expense'
-  category      String   // 'service', 'product', 'salary', 'rent', 'commission', 'other'
+  type          String
+  category      String
   description   String
   amount        Decimal  @db.Decimal(10, 2)
   date          DateTime
-  paymentMethod String?  // 'cash', 'pix', 'credit', 'debit'
-  status        String   @default("completed") // 'completed', 'pending', 'cancelled'
+  paymentMethod String?
+  status        String   @default("completed")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // ✅ Campos para receita manual (barbeiro + cliente + serviço)
   barberId    String?
   customerId  String?
   serviceName String?
@@ -142,18 +138,17 @@ model Transaction {
   @@map("transactions")
 }
 
-// ✅ Model de Comissões dos Barbeiros
 model Commission {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   barberId       String
   barbershopId   String
   percentage     Float
-  amount         Decimal  @db.Decimal(10, 2)
+  amount         Decimal   @db.Decimal(10, 2)
   referenceMonth DateTime
-  status         String   @default("pending") // 'pending', 'paid'
+  status         String    @default("pending")
   paidAt         DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   barber     User       @relation(fields: [barberId], references: [id], onDelete: Cascade)
   barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -161,7 +156,6 @@ model Commission {
   @@map("commissions")
 }
 
-// ✅ Model de Metas Financeiras
 model Goal {
   id            String   @id @default(uuid())
   barbershopId  String
@@ -170,7 +164,7 @@ model Goal {
   currentAmount Decimal  @db.Decimal(10, 2) @default(0)
   startDate     DateTime
   endDate       DateTime
-  status        String   @default("active") // 'active', 'completed', 'cancelled'
+  status        String   @default("active")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -180,18 +174,18 @@ model Goal {
 }
 
 model Subscription {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   barbershopId       String
-  plan               String   // basic, premium, enterprise
-  status             String   @default("active") // active, cancelled, suspended, past_due
-  amount             Decimal  @db.Decimal(10, 2)
-  paymentMethod      String?  // credit_card, pix, boleto
+  plan               String
+  status             String    @default("active")
+  amount             Decimal   @db.Decimal(10, 2)
+  paymentMethod      String?
   externalId         String?
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelledAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   payments   Payment[]
@@ -200,15 +194,15 @@ model Subscription {
 }
 
 model Payment {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   subscriptionId String
-  amount         Decimal  @db.Decimal(10, 2)
-  status         String   @default("pending") // pending, paid, failed, refunded
-  paymentMethod  String   // credit_card, pix, boleto
+  amount         Decimal   @db.Decimal(10, 2)
+  status         String    @default("pending")
+  paymentMethod  String
   externalId     String?
   paidAt         DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
@@ -220,7 +214,7 @@ model Service {
   name         String
   description  String?
   price        Decimal  @db.Decimal(10, 2)
-  duration     Int      // em minutos
+  duration     Int
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -232,7 +226,7 @@ model Service {
   barberId String?
 
   appointments Appointment[]
-  
+
   @@map("services")
 }
 
@@ -250,9 +244,11 @@ model Customer {
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barbershopId String
 
-  appointments Appointment[]
-  transactions Transaction[] @relation("CustomerTransactions")
-  
+  appointments     Appointment[]
+  transactions     Transaction[]    @relation("CustomerTransactions")
+  // ✅ NOVO
+  customerPackages CustomerPackage[]
+
   @@map("customers")
 }
 
@@ -273,30 +269,30 @@ model Client {
   resetPasswordToken   String?   @unique
   resetPasswordExpires DateTime?
 
-  // ✅ CAMPOS DE ACEITAÇÃO DE TERMOS (LGPD) - CLIENTES
   termsAccepted      Boolean   @default(false)
   termsAcceptedAt    DateTime?
   privacyAccepted    Boolean   @default(false)
   privacyAcceptedAt  DateTime?
-  termsVersion       String?   // ex: "v1.0"
-  privacyVersion     String?   // ex: "v1.0"
+  termsVersion       String?
+  privacyVersion     String?
 
-  // ✅ NOVO: Controle de perfil — nome (30 dias) + verificação de telefone por SMS
-  nameChangedAt    DateTime?  // Controla regra de 30 dias para troca de nome
-  phoneOtp         String?    // Código OTP de 6 dígitos enviado via SMS
-  phoneOtpExpires  DateTime?  // Expiração do OTP (15 minutos)
-  phoneVerified    Boolean    @default(false) // Se o telefone foi verificado
+  nameChangedAt   DateTime?
+  phoneOtp        String?
+  phoneOtpExpires DateTime?
+  phoneVerified   Boolean   @default(false)
 
-  appointments Appointment[]
-  favorites    ClientFavorite[]
-  
+  appointments     Appointment[]
+  favorites        ClientFavorite[]
+  // ✅ NOVO
+  customerPackages CustomerPackage[]
+
   @@map("clients")
 }
 
 model Appointment {
   id        String   @id @default(uuid())
   date      DateTime
-  status    String   @default("scheduled") // scheduled, confirmed, completed, cancelled
+  status    String   @default("scheduled")
   notes     String?
   price     Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
@@ -308,19 +304,21 @@ model Appointment {
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerId String?
 
-  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  clientId   String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String?
 
-  barber   User @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barber   User   @relation(fields: [barberId], references: [id], onDelete: Cascade)
   barberId String
 
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   serviceId String
-  
+
+  // ✅ NOVO — vínculo com uso de pacote
+  packageUsages PackageUsage[]
+
   @@map("appointments")
 }
 
-// ✅ Favoritos dos Clientes
 model ClientFavorite {
   id           String   @id @default(uuid())
   clientId     String
@@ -332,4 +330,88 @@ model ClientFavorite {
 
   @@unique([clientId, barbershopId])
   @@map("client_favorites")
+}
+
+// ═══════════════════════════════════════════════════════
+// ✅ NOVO: Controle de Estoque
+// ═══════════════════════════════════════════════════════
+
+model StockItem {
+  id           String   @id @default(uuid())
+  barbershopId String
+  name         String
+  category     String   @default("product") // product, supply, equipment, other
+  quantity     Int      @default(0)
+  minQuantity  Int      @default(5)          // threshold para alerta de estoque baixo
+  unit         String   @default("un")       // un, ml, l, g, kg, cx
+  costPrice    Decimal? @db.Decimal(10, 2)
+  salePrice    Decimal? @db.Decimal(10, 2)
+  supplier     String?
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  barbershop Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  movements  StockMovement[]
+
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id          String   @id @default(uuid())
+  stockItemId String
+  type        String   // 'in' (entrada), 'out' (saída), 'adjustment' (ajuste)
+  quantity    Int
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@map("stock_movements")
+}
+
+// ═══════════════════════════════════════════════════════
+// ✅ NOVO: Pacotes de Clientes (ex: 4 cortes)
+// ═══════════════════════════════════════════════════════
+
+model CustomerPackage {
+  id             String    @id @default(uuid())
+  barbershopId   String
+  customerId     String?   // cliente cadastrado pelo barbeiro
+  clientId       String?   // cliente com conta própria (app)
+  name           String                          // ex: "Pacote 4 Cortes"
+  description    String?
+  totalCuts      Int                             // total de cortes/sessões do pacote
+  usedCuts       Int       @default(0)           // quantos já foram utilizados
+  price          Decimal   @db.Decimal(10, 2)   // valor pago pelo pacote
+  startDate      DateTime
+  expirationDate DateTime
+  lastCutAt      DateTime?
+  status         String    @default("active")   // active, expired, completed, cancelled
+  includedServices Json?                         // lista de serviços inclusos (JSON array)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  barbershop Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer   Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  client     Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  usages     PackageUsage[]
+
+  @@map("customer_packages")
+}
+
+model PackageUsage {
+  id            String    @id @default(uuid())
+  packageId     String
+  appointmentId String?
+  usedAt        DateTime  @default(now())
+  notes         String?
+  barberId      String?   // barbeiro que realizou o serviço nesta sessão
+
+  package     CustomerPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  appointment Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@map("package_usages")
 }

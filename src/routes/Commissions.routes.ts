@@ -4,7 +4,7 @@ import { authMiddleware } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// 💵 GET /api/commissions - Listar comissões
+// 💵 GET /api/commissions
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
@@ -13,7 +13,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const where: any = { barbershopId };
 
     if (barberId) where.barberId = barberId as string;
-    if (status) where.status = status as string;
+    if (status)   where.status   = status as string;
 
     if (month && year) {
       const refMonth = new Date(Number(year), Number(month) - 1, 1);
@@ -22,11 +22,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
     const commissions = await prisma.commission.findMany({
       where,
-      include: {
-        barber: {
-          select: { name: true, email: true }
-        }
-      },
+      include: { barber: { select: { name: true, email: true, commissionPercentage: true } } },
       orderBy: { referenceMonth: 'desc' }
     });
 
@@ -37,7 +33,8 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 🧮 POST /api/commissions/calculate - Calcular comissões do mês
+// 🧮 POST /api/commissions/calculate
+// ✅ FIX: usa barber.commissionPercentage em vez de hardcoded 40
 router.post('/calculate', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
@@ -48,28 +45,18 @@ router.post('/calculate', authMiddleware, async (req, res) => {
     }
 
     const referenceMonth = new Date(Number(year), Number(month) - 1, 1);
-    const firstDay = new Date(Number(year), Number(month) - 1, 1);
-    const lastDay = new Date(Number(year), Number(month), 0, 23, 59, 59);
+    const firstDay       = new Date(Number(year), Number(month) - 1, 1);
+    const lastDay        = new Date(Number(year), Number(month), 0, 23, 59, 59);
 
-    // Buscar barbeiros
     const barbers = await prisma.user.findMany({
-      where: {
-        barbershopId,
-        role: 'barber',
-        active: true
-      }
+      where: { barbershopId, role: 'barber', active: true }
     });
 
     const results = [];
 
     for (const barber of barbers) {
-      // Verificar se já existe comissão para este mês
       const existing = await prisma.commission.findFirst({
-        where: {
-          barberId: barber.id,
-          barbershopId,
-          referenceMonth
-        }
+        where: { barberId: barber.id, barbershopId, referenceMonth }
       });
 
       if (existing) {
@@ -77,7 +64,6 @@ router.post('/calculate', authMiddleware, async (req, res) => {
         continue;
       }
 
-      // Calcular receita do barbeiro no mês
       const appointments = await prisma.appointment.findMany({
         where: {
           barbershopId,
@@ -88,12 +74,11 @@ router.post('/calculate', authMiddleware, async (req, res) => {
       });
 
       const totalRevenue = appointments.reduce((sum, apt) => sum + Number(apt.price), 0);
-      
-      // Percentual padrão: 40%
-      const percentage = 40;
+
+      // ✅ CORRIGIDO: usa o percentual cadastrado para cada barbeiro
+      const percentage       = barber.commissionPercentage || 40;
       const commissionAmount = totalRevenue * (percentage / 100);
 
-      // Criar comissão
       if (commissionAmount > 0) {
         const commission = await prisma.commission.create({
           data: {
@@ -105,7 +90,6 @@ router.post('/calculate', authMiddleware, async (req, res) => {
             status: 'pending'
           }
         });
-
         results.push(commission);
       }
     }
@@ -120,40 +104,25 @@ router.post('/calculate', authMiddleware, async (req, res) => {
   }
 });
 
-// 💰 PUT /api/commissions/:id/pay - Marcar comissão como paga
+// 💰 PUT /api/commissions/:id/pay
 router.put('/:id/pay', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const barbershopId = req.user!.barbershopId!;
 
-    // Verificar se existe e incluir dados do barbeiro
     const existing = await prisma.commission.findFirst({
       where: { id, barbershopId },
-      include: {
-        barber: {
-          select: { name: true }
-        }
-      }
+      include: { barber: { select: { name: true } } }
     });
 
-    if (!existing) {
-      return res.status(404).json({ error: 'Comissão não encontrada' });
-    }
+    if (!existing) return res.status(404).json({ error: 'Comissão não encontrada' });
+    if (existing.status === 'paid') return res.status(400).json({ error: 'Comissão já foi paga' });
 
-    if (existing.status === 'paid') {
-      return res.status(400).json({ error: 'Comissão já foi paga' });
-    }
-
-    // Atualizar
     const commission = await prisma.commission.update({
       where: { id },
-      data: {
-        status: 'paid',
-        paidAt: new Date()
-      }
+      data: { status: 'paid', paidAt: new Date() }
     });
 
-    // Criar transação de despesa
     await prisma.transaction.create({
       data: {
         barbershopId,
@@ -174,7 +143,7 @@ router.put('/:id/pay', authMiddleware, async (req, res) => {
   }
 });
 
-// 📊 GET /api/commissions/report - Relatório de comissões
+// 📊 GET /api/commissions/report
 router.get('/report', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
@@ -187,24 +156,12 @@ router.get('/report', authMiddleware, async (req, res) => {
     const referenceMonth = new Date(Number(year), Number(month) - 1, 1);
 
     const commissions = await prisma.commission.findMany({
-      where: {
-        barbershopId,
-        referenceMonth
-      },
-      include: {
-        barber: {
-          select: { name: true, email: true }
-        }
-      }
+      where: { barbershopId, referenceMonth },
+      include: { barber: { select: { name: true, email: true, commissionPercentage: true } } }
     });
 
-    const totalPending = commissions
-      .filter(c => c.status === 'pending')
-      .reduce((sum, c) => sum + Number(c.amount), 0);
-
-    const totalPaid = commissions
-      .filter(c => c.status === 'paid')
-      .reduce((sum, c) => sum + Number(c.amount), 0);
+    const totalPending = commissions.filter(c => c.status === 'pending').reduce((s, c) => s + Number(c.amount), 0);
+    const totalPaid    = commissions.filter(c => c.status === 'paid').reduce((s, c) => s + Number(c.amount), 0);
 
     return res.json({
       commissions,
@@ -223,31 +180,20 @@ router.get('/report', authMiddleware, async (req, res) => {
   }
 });
 
-// ✏️ PUT /api/commissions/:id - Atualizar comissão
+// ✏️ PUT /api/commissions/:id
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const barbershopId = req.user!.barbershopId!;
     const { percentage, amount } = req.body;
 
-    const existing = await prisma.commission.findFirst({
-      where: { id, barbershopId }
-    });
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Comissão não encontrada' });
-    }
-
-    if (existing.status === 'paid') {
-      return res.status(400).json({ error: 'Não é possível editar comissão paga' });
-    }
+    const existing = await prisma.commission.findFirst({ where: { id, barbershopId } });
+    if (!existing)               return res.status(404).json({ error: 'Comissão não encontrada' });
+    if (existing.status === 'paid') return res.status(400).json({ error: 'Não é possível editar comissão paga' });
 
     const commission = await prisma.commission.update({
       where: { id },
-      data: {
-        percentage,
-        amount
-      }
+      data: { percentage, amount }
     });
 
     return res.json(commission);
@@ -257,28 +203,17 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 🗑️ DELETE /api/commissions/:id - Excluir comissão
+// 🗑️ DELETE /api/commissions/:id
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const barbershopId = req.user!.barbershopId!;
 
-    const existing = await prisma.commission.findFirst({
-      where: { id, barbershopId }
-    });
+    const existing = await prisma.commission.findFirst({ where: { id, barbershopId } });
+    if (!existing)               return res.status(404).json({ error: 'Comissão não encontrada' });
+    if (existing.status === 'paid') return res.status(400).json({ error: 'Não é possível excluir comissão paga' });
 
-    if (!existing) {
-      return res.status(404).json({ error: 'Comissão não encontrada' });
-    }
-
-    if (existing.status === 'paid') {
-      return res.status(400).json({ error: 'Não é possível excluir comissão paga' });
-    }
-
-    await prisma.commission.delete({
-      where: { id }
-    });
-
+    await prisma.commission.delete({ where: { id } });
     return res.json({ message: 'Comissão excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir comissão:', error);

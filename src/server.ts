@@ -18,7 +18,7 @@ import paymentRoutes from './routes/payment.routes';
 import publicBarbershopRoutes from './routes/public-barbershop.routes';
 import clientAuthRoutes from './routes/client-auth.routes';
 import clientAppointmentRoutes from './routes/client-appointment.routes';
-import clientFavoritesRoutes from './routes/client-favorites.routes'; // ✅ NOVO
+import clientFavoritesRoutes from './routes/client-favorites.routes';
 import { startCronJobs } from './jobs';
 import userRoutes from './routes/user.routes';
 import reportsRoutes from './routes/reports.routes';
@@ -27,6 +27,8 @@ import transactionsRoutes from './routes/Transactions.routes';
 import commissionsRoutes from './routes/Commissions.routes';
 import goalsRoutes from './routes/Goals.routes';
 import financeRoutes from './routes/Finance.routes';
+import stockRoutes from './routes/stock.routes';
+import packagesRoutes from './routes/packages.routes';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -105,14 +107,16 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/public', publicBarbershopRoutes);
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/appointments', clientAppointmentRoutes);
-app.use('/api/client/favorites', clientFavoritesRoutes); // ✅ NOVO
+app.use('/api/client/favorites', clientFavoritesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/transactions', transactionsRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/goals', goalsRoutes);
-app.use('/api/finance', financeRoutes);
+app.use('/api/finance',   financeRoutes);
+app.use('/api/stock',     stockRoutes);
+app.use('/api/packages',  packagesRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
