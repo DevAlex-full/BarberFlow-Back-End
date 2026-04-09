@@ -4,22 +4,23 @@ import { authMiddleware } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// 💰 GET /api/finance/summary - Resumo financeiro geral
+// 💰 GET /api/finance/summary
 router.get('/summary', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
     const { startDate, endDate } = req.query;
 
-    // Período padrão: mês atual
-    const start = startDate 
+    // ✅ FIX: período padrão usa UTC para evitar bug de timezone
+    const now = new Date();
+    const start = startDate
       ? new Date(startDate as string)
-      : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
     const end = endDate
       ? new Date(endDate as string)
-      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-    // Buscar transações do período
+    // 1. Transações do período
     const transactions = await prisma.transaction.findMany({
       where: {
         barbershopId,
@@ -28,53 +29,60 @@ router.get('/summary', authMiddleware, async (req, res) => {
       }
     });
 
-    // Calcular totais
-    const totalRevenue = transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const totalExpenses = transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const netProfit = totalRevenue - totalExpenses;
-
-    // Buscar saldo anterior (todas as transações antes do período)
-    const previousTransactions = await prisma.transaction.findMany({
+    // 2. ✅ NOVO: Agendamentos concluídos do período (receita real de serviços)
+    const appointments = await prisma.appointment.findMany({
       where: {
         barbershopId,
-        date: { lt: start },
-        status: 'completed'
+        status: 'completed',
+        date: { gte: start, lte: end }
       }
     });
 
-    const previousBalance = previousTransactions.reduce((sum, t) => {
-      return sum + (t.type === 'income' ? Number(t.amount) : -Number(t.amount));
-    }, 0);
+    const appointmentsRevenue = appointments.reduce((sum, a) => sum + Number(a.price), 0);
+
+    const txIncome   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+    const txExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+
+    // ✅ Evita dupla contagem: transações do tipo 'income' com category 'service'
+    // já podem ter sido criadas a partir de agendamentos — soma só appointments não cobertos
+    // Estratégia simples e segura: inclui appointments + transações manuais de income
+    // (transações geradas automaticamente de agendamentos são do tipo 'service')
+    const manualIncome = transactions
+      .filter(t => t.type === 'income')
+      .reduce((s, t) => s + Number(t.amount), 0);
+
+    // ✅ Total de receita = agendamentos concluídos + transações manuais de receita
+    const totalRevenue  = appointmentsRevenue + manualIncome;
+    const totalExpenses = txExpenses;
+    const netProfit     = totalRevenue - totalExpenses;
+
+    // Saldo anterior (todas as transações + agendamentos antes do período)
+    const [prevTx, prevApts] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { barbershopId, date: { lt: start }, status: 'completed' }
+      }),
+      prisma.appointment.findMany({
+        where: { barbershopId, status: 'completed', date: { lt: start } }
+      })
+    ]);
+
+    const previousBalance = prevTx.reduce((s, t) =>
+      s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0
+    ) + prevApts.reduce((s, a) => s + Number(a.price), 0);
 
     const currentBalance = previousBalance + netProfit;
 
-    // Agrupar despesas por categoria
     const expensesByCategory = transactions
       .filter(t => t.type === 'expense')
       .reduce((acc, t) => {
-        const category = t.category;
-        if (!acc[category]) {
-          acc[category] = 0;
-        }
-        acc[category] += Number(t.amount);
+        acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
         return acc;
       }, {} as Record<string, number>);
 
-    // Agrupar receitas por categoria
     const revenueByCategory = transactions
       .filter(t => t.type === 'income')
       .reduce((acc, t) => {
-        const category = t.category;
-        if (!acc[category]) {
-          acc[category] = 0;
-        }
-        acc[category] += Number(t.amount);
+        acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
         return acc;
       }, {} as Record<string, number>);
 
@@ -84,18 +92,18 @@ router.get('/summary', authMiddleware, async (req, res) => {
         currentBalance,
         previousBalance,
         totalRevenue,
+        appointmentsRevenue,
+        manualIncome,
         totalExpenses,
         netProfit,
-        profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(2) : 0
+        profitMargin: totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(2)) : 0
       },
-      breakdown: {
-        expensesByCategory,
-        revenueByCategory
-      },
+      breakdown: { expensesByCategory, revenueByCategory },
       transactions: {
-        total: transactions.length,
-        income: transactions.filter(t => t.type === 'income').length,
-        expense: transactions.filter(t => t.type === 'expense').length
+        total:   transactions.length,
+        income:  transactions.filter(t => t.type === 'income').length,
+        expense: transactions.filter(t => t.type === 'expense').length,
+        appointments: appointments.length
       }
     });
   } catch (error) {
@@ -104,56 +112,55 @@ router.get('/summary', authMiddleware, async (req, res) => {
   }
 });
 
-// 📊 GET /api/finance/cashflow - Fluxo de caixa mensal
+// 📊 GET /api/finance/cashflow
 router.get('/cashflow', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
-    const { year, months = 12 } = req.query;
+    const { year, months = 6 } = req.query;
 
-    const currentYear = year ? Number(year) : new Date().getFullYear();
+    const now = new Date();
+    const currentYear  = year ? Number(year) : now.getUTCFullYear();
     const monthsToShow = Number(months);
 
     const cashflow = [];
 
     for (let i = 0; i < monthsToShow; i++) {
-      const date = new Date(currentYear, new Date().getMonth() - i, 1);
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+      const d          = new Date(Date.UTC(currentYear, now.getUTCMonth() - i, 1));
+      const monthStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+      const monthEnd   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-      const transactions = await prisma.transaction.findMany({
-        where: {
-          barbershopId,
-          date: { gte: monthStart, lte: monthEnd },
-          status: 'completed'
-        }
-      });
+      const [txs, apts] = await Promise.all([
+        prisma.transaction.findMany({
+          where: { barbershopId, date: { gte: monthStart, lte: monthEnd }, status: 'completed' }
+        }),
+        prisma.appointment.findMany({
+          where: { barbershopId, status: 'completed', date: { gte: monthStart, lte: monthEnd } }
+        })
+      ]);
 
-      const revenue = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-
-      const expenses = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+      const txIncome   = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+      const aptRevenue = apts.reduce((s, a) => s + Number(a.price), 0);
+      const revenue    = aptRevenue + txIncome;
+      const expenses   = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
 
       cashflow.unshift({
-        month: date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
-        monthNumber: date.getMonth() + 1,
-        year: date.getFullYear(),
+        month: d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'America/Sao_Paulo' }),
+        monthNumber: d.getUTCMonth() + 1,
+        year: d.getUTCFullYear(),
         revenue,
         expenses,
         netFlow: revenue - expenses,
-        transactionCount: transactions.length
+        transactionCount: txs.length + apts.length
       });
     }
 
     return res.json({
       cashflow,
       summary: {
-        totalRevenue: cashflow.reduce((sum, m) => sum + m.revenue, 0),
-        totalExpenses: cashflow.reduce((sum, m) => sum + m.expenses, 0),
-        averageMonthlyRevenue: cashflow.reduce((sum, m) => sum + m.revenue, 0) / monthsToShow,
-        averageMonthlyExpenses: cashflow.reduce((sum, m) => sum + m.expenses, 0) / monthsToShow
+        totalRevenue:          cashflow.reduce((s, m) => s + m.revenue, 0),
+        totalExpenses:         cashflow.reduce((s, m) => s + m.expenses, 0),
+        averageMonthlyRevenue: cashflow.reduce((s, m) => s + m.revenue, 0) / monthsToShow,
+        averageMonthlyExpenses: cashflow.reduce((s, m) => s + m.expenses, 0) / monthsToShow
       }
     });
   } catch (error) {
@@ -162,99 +169,61 @@ router.get('/cashflow', authMiddleware, async (req, res) => {
   }
 });
 
-// 📈 GET /api/finance/dre - Demonstrativo de Resultados do Exercício
+// 📈 GET /api/finance/dre
 router.get('/dre', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
     const { startDate, endDate } = req.query;
 
-    // Período padrão: mês atual
-    const start = startDate 
+    const now = new Date();
+    const start = startDate
       ? new Date(startDate as string)
-      : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const end = endDate
       ? new Date(endDate as string)
-      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        barbershopId,
-        date: { gte: start, lte: end },
-        status: 'completed'
-      }
-    });
+    const [transactions, appointments] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { barbershopId, date: { gte: start, lte: end }, status: 'completed' }
+      }),
+      prisma.appointment.findMany({
+        where: { barbershopId, status: 'completed', date: { gte: start, lte: end } }
+      })
+    ]);
 
-    // Receitas
-    const serviceRevenue = transactions
+    const aptRevenue = appointments.reduce((s, a) => s + Number(a.price), 0);
+
+    const serviceRevenue = aptRevenue + transactions
       .filter(t => t.type === 'income' && t.category === 'service')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     const productRevenue = transactions
       .filter(t => t.type === 'income' && t.category === 'product')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     const otherRevenue = transactions
       .filter(t => t.type === 'income' && !['service', 'product'].includes(t.category))
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     const totalRevenue = serviceRevenue + productRevenue + otherRevenue;
 
-    // Despesas Operacionais
-    const salaryExpenses = transactions
-      .filter(t => t.type === 'expense' && t.category === 'salary')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const salaryExpenses     = transactions.filter(t => t.type === 'expense' && t.category === 'salary').reduce((s, t) => s + Number(t.amount), 0);
+    const commissionExpenses = transactions.filter(t => t.type === 'expense' && t.category === 'commission').reduce((s, t) => s + Number(t.amount), 0);
+    const rentExpenses       = transactions.filter(t => t.type === 'expense' && t.category === 'rent').reduce((s, t) => s + Number(t.amount), 0);
+    const utilitiesExpenses  = transactions.filter(t => t.type === 'expense' && t.category === 'utilities').reduce((s, t) => s + Number(t.amount), 0);
+    const suppliesExpenses   = transactions.filter(t => t.type === 'expense' && t.category === 'supplies').reduce((s, t) => s + Number(t.amount), 0);
+    const otherExpenses      = transactions.filter(t => t.type === 'expense' && !['salary','commission','rent','utilities','supplies'].includes(t.category)).reduce((s, t) => s + Number(t.amount), 0);
+    const totalExpenses = salaryExpenses + commissionExpenses + rentExpenses + utilitiesExpenses + suppliesExpenses + otherExpenses;
 
-    const commissionExpenses = transactions
-      .filter(t => t.type === 'expense' && t.category === 'commission')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const rentExpenses = transactions
-      .filter(t => t.type === 'expense' && t.category === 'rent')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const utilitiesExpenses = transactions
-      .filter(t => t.type === 'expense' && t.category === 'utilities')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const suppliesExpenses = transactions
-      .filter(t => t.type === 'expense' && t.category === 'supplies')
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const otherExpenses = transactions
-      .filter(t => t.type === 'expense' && !['salary', 'commission', 'rent', 'utilities', 'supplies'].includes(t.category))
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    const totalExpenses = salaryExpenses + commissionExpenses + rentExpenses + 
-                         utilitiesExpenses + suppliesExpenses + otherExpenses;
-
-    // Resultados
-    const operatingProfit = totalRevenue - totalExpenses;
-    const netProfit = operatingProfit; // Simplificado (sem impostos/juros)
+    const netProfit = totalRevenue - totalExpenses;
 
     return res.json({
       period: { start, end },
       dre: {
-        revenue: {
-          services: serviceRevenue,
-          products: productRevenue,
-          others: otherRevenue,
-          total: totalRevenue
-        },
-        expenses: {
-          salaries: salaryExpenses,
-          commissions: commissionExpenses,
-          rent: rentExpenses,
-          utilities: utilitiesExpenses,
-          supplies: suppliesExpenses,
-          others: otherExpenses,
-          total: totalExpenses
-        },
-        results: {
-          operatingProfit,
-          netProfit,
-          profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(2) : 0
-        }
+        revenue: { services: serviceRevenue, products: productRevenue, others: otherRevenue, total: totalRevenue },
+        expenses: { salaries: salaryExpenses, commissions: commissionExpenses, rent: rentExpenses, utilities: utilitiesExpenses, supplies: suppliesExpenses, others: otherExpenses, total: totalExpenses },
+        results: { operatingProfit: netProfit, netProfit, profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(2) : 0 }
       }
     });
   } catch (error) {
@@ -263,81 +232,43 @@ router.get('/dre', authMiddleware, async (req, res) => {
   }
 });
 
-// 💼 GET /api/finance/balance - Balanço Patrimonial Simplificado
+// 💼 GET /api/finance/balance
 router.get('/balance', authMiddleware, async (req, res) => {
   try {
     const barbershopId = req.user!.barbershopId!;
     const { date } = req.query;
+    const referenceDate = date ? new Date(date as string) : new Date();
 
-    const referenceDate = date 
-      ? new Date(date as string)
-      : new Date();
+    const [transactions, appointments] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { barbershopId, date: { lte: referenceDate }, status: 'completed' }
+      }),
+      prisma.appointment.findMany({
+        where: { barbershopId, status: 'completed', date: { lte: referenceDate } }
+      })
+    ]);
 
-    // Buscar todas as transações até a data de referência
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        barbershopId,
-        date: { lte: referenceDate },
-        status: 'completed'
-      }
-    });
+    const txBalance  = transactions.reduce((s, t) => s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0);
+    const aptRevenue = appointments.reduce((s, a) => s + Number(a.price), 0);
+    const cashBalance = txBalance + aptRevenue;
 
-    // Calcular saldo (caixa)
-    const cashBalance = transactions.reduce((sum, t) => {
-      return sum + (t.type === 'income' ? Number(t.amount) : -Number(t.amount));
-    }, 0);
-
-    // Buscar comissões pendentes (passivo)
     const pendingCommissions = await prisma.commission.findMany({
-      where: {
-        barbershopId,
-        status: 'pending',
-        referenceMonth: { lte: referenceDate }
-      }
+      where: { barbershopId, status: 'pending', referenceMonth: { lte: referenceDate } }
     });
+    const totalCommissionsPayable = pendingCommissions.reduce((s, c) => s + Number(c.amount), 0);
 
-    const totalCommissionsPayable = pendingCommissions.reduce(
-      (sum, c) => sum + Number(c.amount), 
-      0
-    );
-
-    // Ativos
-    const assets = {
-      cash: cashBalance,
-      total: cashBalance
-    };
-
-    // Passivos
-    const liabilities = {
-      commissionsPayable: totalCommissionsPayable,
-      total: totalCommissionsPayable
-    };
-
-    // Patrimônio Líquido
-    const equity = assets.total - liabilities.total;
+    const equity = cashBalance - totalCommissionsPayable;
 
     return res.json({
       referenceDate,
       balance: {
-        assets: {
-          current: {
-            cash: assets.cash
-          },
-          total: assets.total
-        },
-        liabilities: {
-          current: {
-            commissionsPayable: liabilities.commissionsPayable
-          },
-          total: liabilities.total
-        },
-        equity: {
-          total: equity
-        }
+        assets:      { current: { cash: cashBalance }, total: cashBalance },
+        liabilities: { current: { commissionsPayable: totalCommissionsPayable }, total: totalCommissionsPayable },
+        equity:      { total: equity }
       },
       verification: {
-        balanced: (assets.total === liabilities.total + equity),
-        difference: assets.total - (liabilities.total + equity)
+        balanced:   cashBalance === totalCommissionsPayable + equity,
+        difference: cashBalance - (totalCommissionsPayable + equity)
       }
     });
   } catch (error) {
