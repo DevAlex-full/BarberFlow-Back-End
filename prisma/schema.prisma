@@ -46,6 +46,7 @@ model User {
   servicesProvided Service[]
   commissions      Commission[]
   transactions     Transaction[] @relation("BarberTransactions")
+  packageUsages    PackageUsage[] @relation("BarberPackageUsages")
 
   @@map("users")
 }
@@ -408,7 +409,8 @@ model PackageUsage {
   appointmentId String?
   usedAt        DateTime  @default(now())
   notes         String?
-  barberId      String?   // barbeiro que realizou o serviço nesta sessão
+  barberId      String?
+  barber        User?     @relation("BarberPackageUsages", fields: [barberId], references: [id], onDelete: SetNull)
 
   package     CustomerPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
   appointment Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
