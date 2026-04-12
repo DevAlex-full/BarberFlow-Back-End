@@ -47,6 +47,7 @@ model User {
   commissions      Commission[]
   transactions     Transaction[] @relation("BarberTransactions")
   packageUsages    PackageUsage[] @relation("BarberPackageUsages")
+  stockMovements   StockMovement[] @relation("BarberStockMovements")
 
   @@map("users")
 }
@@ -362,12 +363,16 @@ model StockItem {
 model StockMovement {
   id          String   @id @default(uuid())
   stockItemId String
-  type        String   // 'in' (entrada), 'out' (saída), 'adjustment' (ajuste)
+  type        String   // 'in', 'out', 'adjustment'
   quantity    Int
   reason      String?
+  unitPrice   Decimal? @db.Decimal(10, 2)  // preço de venda unitário (preenchido em 'out')
+  barberId    String?  // barbeiro que realizou a venda
+  customerId  String?  // cliente que comprou (opcional)
   createdAt   DateTime @default(now())
 
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  barber    User?     @relation("BarberStockMovements", fields: [barberId], references: [id], onDelete: SetNull)
 
   @@map("stock_movements")
 }
