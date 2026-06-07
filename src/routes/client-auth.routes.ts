@@ -5,6 +5,13 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import passport from '../config/passport';
 import { forgotPassword, resetPassword } from '../middlewares/client-auth.middleware';
+import { clientAuthRateLimit, otpRateLimit } from '../middlewares/rate-limit.middleware';
+
+// ✅ SEGURANÇA: JWT_SECRET obrigatório no startup — falha rápido se não configurado
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET não está definido nas variáveis de ambiente. Servidor não pode iniciar.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const router = Router();
 
@@ -68,9 +75,9 @@ function extractClientId(req: Request): string {
   if (!authHeader) throw { status: 401, message: 'Token não fornecido' };
 
   const [, token] = authHeader.split(' ');
-  const decoded = jwt.verify(
-    token, process.env.JWT_SECRET || 'your-secret-key'
-  ) as { id: string; type: string };
+
+  // ✅ SEGURANÇA: usa JWT_SECRET validado no startup — sem fallback inseguro
+  const decoded = jwt.verify(token, JWT_SECRET) as { id: string; type: string };
 
   if (decoded.type !== 'client') throw { status: 401, message: 'Token inválido' };
   return decoded.id;
@@ -108,9 +115,10 @@ router.get(
         return res.redirect(buildErrorRedirect(redirectUri, 'auth_failed'));
       }
 
+      // ✅ SEGURANÇA: usa JWT_SECRET validado no startup — sem fallback inseguro
       const token = jwt.sign(
         { id: req.user.id, type: 'client' },
-        process.env.JWT_SECRET || 'your-secret-key',
+        JWT_SECRET,
         { expiresIn: '7d' }
       );
 
@@ -163,9 +171,10 @@ router.get(
         return res.redirect(buildErrorRedirect(redirectUri, 'auth_failed'));
       }
 
+      // ✅ SEGURANÇA: usa JWT_SECRET validado no startup — sem fallback inseguro
       const token = jwt.sign(
         { id: req.user.id, type: 'client' },
-        process.env.JWT_SECRET || 'your-secret-key',
+        JWT_SECRET,
         { expiresIn: '7d' }
       );
 
@@ -188,7 +197,8 @@ router.get(
 
 // ─── Rotas tradicionais ────────────────────────────────────────────────────────
 
-router.post('/register', async (req, res) => {
+// ✅ SEGURANÇA: clientAuthRateLimit aplicado em register e login
+router.post('/register', clientAuthRateLimit, async (req, res) => {
   try {
     const { name, email, phone, password, termsAccepted, privacyAccepted } = req.body;
 
@@ -221,9 +231,10 @@ router.post('/register', async (req, res) => {
       select: { id: true, name: true, email: true, phone: true, avatar: true, createdAt: true },
     });
 
+    // ✅ SEGURANÇA: usa JWT_SECRET validado no startup — sem fallback inseguro
     const token = jwt.sign(
       { id: client.id, type: 'client' },
-      process.env.JWT_SECRET || 'your-secret-key',
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -234,7 +245,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+// ✅ SEGURANÇA: clientAuthRateLimit aplicado no login
+router.post('/login', clientAuthRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log('🔐 Tentativa de login:', { email });
@@ -259,9 +271,10 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // ✅ SEGURANÇA: usa JWT_SECRET validado no startup — sem fallback inseguro
     const token = jwt.sign(
       { id: client.id, type: 'client' },
-      process.env.JWT_SECRET || 'your-secret-key',
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -320,8 +333,9 @@ router.get('/validate-reset-token', async (req, res) => {
   }
 });
 
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
+// ✅ SEGURANÇA: clientAuthRateLimit aplicado em forgot e reset password
+router.post('/forgot-password', clientAuthRateLimit, forgotPassword);
+router.post('/reset-password', clientAuthRateLimit, resetPassword);
 
 // ─── Perfil do Cliente ─────────────────────────────────────────────────────────
 
@@ -376,7 +390,8 @@ router.put('/profile', async (req, res) => {
 });
 
 // ✅ POST /request-phone-verification — Gera OTP e envia por SMS
-router.post('/request-phone-verification', async (req, res) => {
+// ✅ SEGURANÇA: otpRateLimit (5 tentativas / 10 min)
+router.post('/request-phone-verification', otpRateLimit, async (req, res) => {
   try {
     const clientId = extractClientId(req);
 
@@ -420,7 +435,8 @@ router.post('/request-phone-verification', async (req, res) => {
 });
 
 // ✅ POST /verify-phone — Valida OTP e salva telefone verificado
-router.post('/verify-phone', async (req, res) => {
+// ✅ SEGURANÇA: otpRateLimit (5 tentativas / 10 min)
+router.post('/verify-phone', otpRateLimit, async (req, res) => {
   try {
     const clientId = extractClientId(req);
 

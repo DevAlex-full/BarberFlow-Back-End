@@ -31,13 +31,16 @@ router.get('/', authMiddleware, checkPlanActive, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — findFirst com barbershopId garante isolamento de tenant
 // Buscar cliente por ID
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
 
-    const customer = await prisma.customer.findUnique({
-      where: { id },
+    // Garante que o cliente pertence à barbearia do usuário autenticado
+    const customer = await prisma.customer.findFirst({
+      where: { id, barbershopId },
       include: {
         appointments: {
           include: {
@@ -83,11 +86,22 @@ router.post('/', authMiddleware, checkPlanActive, checkCustomerLimit, async (req
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — verifica se o cliente pertence à barbearia do usuário
 // Atualizar cliente
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
     const { name, email, phone, birthDate, notes, active } = req.body;
+
+    // Garante que o cliente pertence à barbearia do usuário autenticado
+    const existing = await prisma.customer.findFirst({
+      where: { id, barbershopId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Cliente não encontrado' });
+    }
 
     const customer = await prisma.customer.update({
       where: { id },
@@ -108,10 +122,21 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — verifica se o cliente pertence à barbearia do usuário
 // Deletar cliente
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
+
+    // Garante que o cliente pertence à barbearia do usuário autenticado
+    const existing = await prisma.customer.findFirst({
+      where: { id, barbershopId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Cliente não encontrado' });
+    }
 
     await prisma.customer.delete({
       where: { id }

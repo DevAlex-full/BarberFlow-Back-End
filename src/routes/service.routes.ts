@@ -50,11 +50,22 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — verifica se o serviço pertence à barbearia do usuário
 // Atualizar serviço
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
     const { name, description, price, duration, barberId, active } = req.body;
+
+    // Garante que o serviço pertence à barbearia do usuário autenticado
+    const existing = await prisma.service.findFirst({
+      where: { id, barbershopId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Serviço não encontrado' });
+    }
 
     const service = await prisma.service.update({
       where: { id },
@@ -75,10 +86,21 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — verifica se o serviço pertence à barbearia do usuário
 // Deletar serviço
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
+
+    // Garante que o serviço pertence à barbearia do usuário autenticado
+    const existing = await prisma.service.findFirst({
+      where: { id, barbershopId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Serviço não encontrado' });
+    }
 
     await prisma.service.delete({
       where: { id }

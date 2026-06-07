@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { prisma } from '../config/prisma';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { sendEmail } from '../services/email.service';
+import { authRateLimit } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
@@ -23,8 +24,8 @@ const generateSlug = (name: string): string => {
     .trim();
 };
 
-// Register
-router.post('/register', async (req, res) => {
+// ✅ SEGURANÇA: authRateLimit — 10 tentativas / 15 min por IP
+router.post('/register', authRateLimit, async (req, res) => {
   try {
     const { name, email, password, phone, barbershopName, barbershopPhone } = req.body;
 
@@ -105,8 +106,9 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: authRateLimit — 10 tentativas / 15 min por IP
 // Login (com suporte a super admin)
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -199,8 +201,9 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: authRateLimit — 10 tentativas / 15 min por IP
 // Esqueci a senha
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', authRateLimit, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -305,8 +308,9 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: authRateLimit — 10 tentativas / 15 min por IP
 // Redefinir senha
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', authRateLimit, async (req, res) => {
   try {
     const { token, password } = req.body;
 

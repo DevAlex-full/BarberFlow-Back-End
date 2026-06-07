@@ -30,11 +30,15 @@ export async function clientAuthMiddleware(
       return res.status(401).json({ error: 'Token mal formatado' });
     }
 
+    // ✅ SEGURANÇA: JWT_SECRET obrigatório — sem fallback inseguro
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error('❌ FATAL: JWT_SECRET não definido nas variáveis de ambiente');
+      return res.status(500).json({ error: 'Erro de configuração do servidor' });
+    }
+
     // Verificar token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'your-secret-key'
-    ) as ClientTokenPayload;
+    const decoded = jwt.verify(token, jwtSecret) as ClientTokenPayload;
 
     if (decoded.type !== 'client') {
       return res.status(401).json({ error: 'Tipo de token inválido' });

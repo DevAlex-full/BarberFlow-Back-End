@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import passport from './config/passport';
@@ -29,6 +30,7 @@ import goalsRoutes from './routes/Goals.routes';
 import financeRoutes from './routes/Finance.routes';
 import stockRoutes from './routes/stock.routes';
 import packagesRoutes from './routes/packages.routes';
+import { globalRateLimit, publicRateLimit } from './middlewares/rate-limit.middleware';
 
 console.log('🔵 Iniciando servidor...');
 
@@ -38,7 +40,16 @@ console.log('🔵 Porta configurada:', process.env.PORT);
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ✅ CORS - Origens corrigidas com HTTPS
+// ─── Helmet — headers de segurança HTTP ──────────────────────────────────────
+// contentSecurityPolicy desabilitado: servidor é API pura (sem HTML/CSS próprio).
+// crossOriginEmbedderPolicy desabilitado: frontend em Vercel carrega recursos da API.
+// Todos os demais headers do Helmet ficam ativos (X-Frame-Options, HSTS, etc.).
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ─── CORS — origens permitidas ────────────────────────────────────────────────
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -52,23 +63,21 @@ console.log('🌐 Origens permitidas (CORS):', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir requisições sem origin (mobile apps, Postman, etc)
+    // Permite requisições sem origin (apps mobile nativos, Expo Go, etc.)
+    // Necessário para o app cliente funcionar corretamente.
     if (!origin) return callback(null, true);
-    
-    // Remover barra final do origin para comparação
+
+    // Remove barra final do origin para comparação
     const cleanOrigin = origin.replace(/\/$/, '');
-    
-    // Verificar se o origin (sem barra) está na lista
-    const isAllowed = allowedOrigins.some(allowed => 
+
+    const isAllowed = allowedOrigins.some(allowed =>
       allowed === cleanOrigin
     );
-    
+
     if (isAllowed) {
-      console.log('✅ Origem permitida:', origin);
       callback(null, true);
     } else {
       console.log('❌ Origem bloqueada por CORS:', origin);
-      console.log('📋 Origens permitidas:', allowedOrigins);
       callback(new Error('Origem não permitida pela política de CORS'));
     }
   },
@@ -81,6 +90,11 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+// ─── Rate Limiting Global ─────────────────────────────────────────────────────
+// 120 req/min por IP — fallback geral.
+// Rotas específicas (auth, OTP) têm limites próprios mais restritivos.
+app.use(globalRateLimit);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -91,7 +105,7 @@ console.log('🔐 Passport inicializado com sucesso!');
 // Servir arquivos estáticos
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
-// Routes
+// ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/barbershop', barbershopRoutes);
 app.use('/api/barbershop-location', barbershopLocationRoutes);
@@ -104,7 +118,10 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payment', paymentRoutes);
-app.use('/api/public', publicBarbershopRoutes);
+
+// ✅ SEGURANÇA: publicRateLimit aplicado nas rotas públicas de descoberta
+app.use('/api/public', publicRateLimit, publicBarbershopRoutes);
+
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/appointments', clientAppointmentRoutes);
 app.use('/api/client/favorites', clientFavoritesRoutes);
@@ -118,17 +135,13 @@ app.use('/api/finance',   financeRoutes);
 app.use('/api/stock',     stockRoutes);
 app.use('/api/packages',  packagesRoutes);
 
-// Health check
+// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'BarberFlow API está rodando!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    oauth: {
-      google: !!process.env.GOOGLE_CLIENT_ID,
-      facebook: !!process.env.FACEBOOK_APP_ID
-    }
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -156,7 +169,7 @@ app.listen(PORT, () => {
   console.log(`📅 Data/Hora: ${new Date().toLocaleString('pt-BR')}`);
   console.log(`🔐 OAuth Google: ${process.env.GOOGLE_CLIENT_ID ? '✅' : '❌'}`);
   console.log(`🔐 OAuth Facebook: ${process.env.FACEBOOK_APP_ID ? '✅' : '❌'}\n`);
-  
+
   startCronJobs();
 });
 

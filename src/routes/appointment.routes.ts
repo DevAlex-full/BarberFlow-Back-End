@@ -87,15 +87,16 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // ✅ ATUALIZAR AGENDAMENTO - COM WEBHOOK FINANCEIRO
+// ✅ SEGURANÇA: IDOR corrigido — findFirst com barbershopId garante isolamento de tenant
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { date, status, notes, customerId, barberId, serviceId } = req.body;
     const barbershopId = req.user!.barbershopId!;
 
-    // ✅ Buscar agendamento ANTES da atualização
-    const previousAppointment = await prisma.appointment.findUnique({
-      where: { id }
+    // ✅ SEGURANÇA: busca com barbershopId — impede acesso a agendamentos de outras barbearias
+    const previousAppointment = await prisma.appointment.findFirst({
+      where: { id, barbershopId }
     });
 
     if (!previousAppointment) {
@@ -172,10 +173,21 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ SEGURANÇA: IDOR corrigido — verifica se o agendamento pertence à barbearia do usuário
 // Deletar agendamento
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const barbershopId = req.user!.barbershopId!;
+
+    // Garante que o agendamento pertence à barbearia do usuário autenticado
+    const existing = await prisma.appointment.findFirst({
+      where: { id, barbershopId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
 
     await prisma.appointment.delete({
       where: { id }
