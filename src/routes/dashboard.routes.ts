@@ -205,20 +205,23 @@ router.get('/charts', authMiddleware, async (req, res) => {
       take: 3
     });
 
-    const topServices = await Promise.all(
-      topServicesData.map(async (item) => {
-        const service = await prisma.service.findUnique({
-          where: { id: item.serviceId },
-          select: { name: true }
-        });
-
-        return {
-          name: service?.name || 'Serviço removido',
-          count: item._count.serviceId,
-          revenue: item._sum.price ? Number(item._sum.price) : 0
-        };
-      })
+    // ✅ Fix N+1: uma única query para todos os serviços do top,
+    // em vez de 1 findUnique por item dentro de um Promise.all + map.
+    // De N queries → 1 query fixa independente do número de serviços.
+    const serviceIds = topServicesData.map(item => item.serviceId);
+    const servicesResult = await prisma.service.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, name: true }
+    });
+    const servicesMap = Object.fromEntries(
+      servicesResult.map(s => [s.id, s.name])
     );
+
+    const topServices = topServicesData.map(item => ({
+      name: servicesMap[item.serviceId] || 'Serviço removido',
+      count: item._count.serviceId,
+      revenue: item._sum.price ? Number(item._sum.price) : 0
+    }));
 
     // ========================================
     // 📊 TAXA DE OCUPAÇÃO (últimos 30 dias)

@@ -1,9 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+// ✅ CORRIGIDO: usa singleton do Prisma em vez de new PrismaClient()
+// Motivo: múltiplas instâncias esgotam o pool de conexões do Supabase (limite: 10).
+import { prisma } from '../config/prisma';
 import { sendEmail, appointmentReminderTemplate, clientReminderTemplate } from '../services/email.service';
 import { format, addDays, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const prisma = new PrismaClient();
 
 export async function sendAutomaticReminders() {
   try {

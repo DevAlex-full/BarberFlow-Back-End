@@ -2,18 +2,19 @@ import dotenv from 'dotenv';
 dotenv.config(); // ✅ Carrega .env antes de ler as credenciais OAuth
 
 import passport from 'passport';
-import { 
-  Strategy as GoogleStrategy, 
+import {
+  Strategy as GoogleStrategy,
   Profile as GoogleProfile,
-  VerifyCallback 
+  VerifyCallback
 } from 'passport-google-oauth20';
-import { 
-  Strategy as FacebookStrategy, 
-  Profile as FacebookProfile 
+import {
+  Strategy as FacebookStrategy,
+  Profile as FacebookProfile
 } from 'passport-facebook';
-import { PrismaClient, Client, User } from '@prisma/client';
-
-const prisma = new PrismaClient();
+// ✅ CORRIGIDO: importa tipos do @prisma/client e prisma do singleton
+// Motivo: múltiplas instâncias de PrismaClient esgotam o pool de conexões do Supabase.
+import { Client, User } from '@prisma/client';
+import { prisma } from './prisma';
 
 // ===========================
 // GOOGLE OAUTH STRATEGY (CONDICIONAL)
@@ -66,8 +67,8 @@ if (GOOGLE_CONFIG.clientID && GOOGLE_CONFIG.clientSecret && GOOGLE_CONFIG.callba
             console.log(`🔗 Vinculando Google ID ao cliente: ${email}`);
             client = await prisma.client.update({
               where: { id: client.id },
-              data: { 
-                googleId: profile.id 
+              data: {
+                googleId: profile.id
               },
             });
           }
@@ -112,7 +113,7 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
       ) => {
         try {
           const email = profile.emails?.[0]?.value;
-          
+
           if (!email) {
             console.warn('⚠️ Facebook OAuth: Email não fornecido');
             return done(
@@ -145,8 +146,8 @@ if (FACEBOOK_CONFIG.clientID && FACEBOOK_CONFIG.clientSecret && FACEBOOK_CONFIG.
             console.log(`🔗 Vinculando Facebook ID ao cliente: ${email}`);
             client = await prisma.client.update({
               where: { id: client.id },
-              data: { 
-                facebookId: profile.id 
+              data: {
+                facebookId: profile.id
               },
             });
           }

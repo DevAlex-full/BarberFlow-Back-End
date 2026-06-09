@@ -1,10 +1,10 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+// ✅ CORRIGIDO: usa singleton do Prisma em vez de new PrismaClient()
+// Motivo: múltiplas instâncias esgotam o pool de conexões do Supabase (limite: 10).
+import { prisma } from '../config/prisma';
 
 /**
  * Job: Atualiza planStatus no banco para barbearias com plano expirado.
- * 
+ *
  * Casos cobertos:
  * 1. Trial expirado: plan = 'trial' AND trialEndsAt < now AND planStatus != 'expired'
  * 2. Plano pago expirado: planExpiresAt < now AND planStatus = 'active'
