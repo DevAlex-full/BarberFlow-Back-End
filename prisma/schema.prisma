@@ -4,8 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -45,10 +46,14 @@ model User {
   appointments     Appointment[]
   servicesProvided Service[]
   commissions      Commission[]
-  transactions     Transaction[] @relation("BarberTransactions")
+  transactions     Transaction[]  @relation("BarberTransactions")
   packageUsages    PackageUsage[] @relation("BarberPackageUsages")
   stockMovements   StockMovement[] @relation("BarberStockMovements")
 
+  // ✅ B1: Índice composto [barbershopId, role]
+  // Cobre: { barbershopId } (listagem), { barbershopId, role: 'barber' } (barbeiros ativos),
+  // { barbershopId, role: 'barber', active: true } (dashboard, analytics, commissions)
+  @@index([barbershopId, role])
   @@map("users")
 }
 
@@ -113,6 +118,11 @@ model Barbershop {
   stockItems       StockItem[]
   customerPackages CustomerPackage[]
 
+  // ✅ B1: Índice composto [planStatus, active]
+  // Cobre: public-barbershop.routes.ts { active: true, planStatus: 'active' }
+  // Cobre: update-plan-status.job.ts updateMany { planStatus: { not: 'expired' } }
+  // e { planStatus: 'active', planExpiresAt: { lt: now } }
+  @@index([planStatus, active])
   @@map("barbershops")
 }
 
@@ -137,6 +147,13 @@ model Transaction {
   barber     User?      @relation("BarberTransactions", fields: [barberId], references: [id], onDelete: SetNull)
   customer   Customer?  @relation("CustomerTransactions", fields: [customerId], references: [id], onDelete: SetNull)
 
+  // ✅ B1: Índice composto [barbershopId, date]
+  // Cobre: { barbershopId } simples (prefixo esquerdo)
+  // Cobre: { barbershopId, date: { gte, lte } } — Finance/cashflow, Finance/summary,
+  //        Finance/DRE, dashboard/charts 12 meses, analytics 30 dias
+  // Nota: type e status NÃO foram indexados separadamente porque 100% das queries
+  //       de Transaction incluem um filtro de date, tornando o índice de date suficiente.
+  @@index([barbershopId, date])
   @@map("transactions")
 }
 
@@ -155,6 +172,13 @@ model Commission {
   barber     User       @relation(fields: [barberId], references: [id], onDelete: Cascade)
   barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
+  // ✅ B1: Índice composto [barbershopId, barberId]
+  // barbershopId como coluna LÍDER cobre:
+  //   - { barbershopId } → listagem de comissões da barbearia
+  //   - { barbershopId, barberId } → cálculo por barbeiro (loop)
+  //   - { barbershopId, barberId, referenceMonth } → verificação de mês já calculado
+  // Um único índice substitui dois índices separados ([barbershopId] + [barberId, barbershopId])
+  @@index([barbershopId, barberId])
   @@map("commissions")
 }
 
@@ -172,6 +196,9 @@ model Goal {
 
   barbershop Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
+  // ✅ B1: Índice simples [barbershopId]
+  // Tabela de baixo volume — simples é suficiente
+  @@index([barbershopId])
   @@map("goals")
 }
 
@@ -229,6 +256,10 @@ model Service {
 
   appointments Appointment[]
 
+  // ✅ B1: Índice composto [barbershopId, active]
+  // Cobre: { barbershopId } simples (prefixo esquerdo)
+  // Cobre: { barbershopId, active: true } — dashboard count, GET /services com filtro
+  @@index([barbershopId, active])
   @@map("services")
 }
 
@@ -251,6 +282,11 @@ model Customer {
   // ✅ NOVO
   customerPackages CustomerPackage[]
 
+  // ✅ B1: Índice composto [barbershopId, active]
+  // Substitui [barbershopId] simples — leftmost prefix cobre queries sem active
+  // Cobre: { barbershopId } → listagem geral e IDOR fix
+  // Cobre: { barbershopId, active: true } → dashboard count, analytics allCustomers
+  @@index([barbershopId, active])
   @@map("customers")
 }
 
@@ -318,6 +354,24 @@ model Appointment {
   // ✅ NOVO — vínculo com uso de pacote
   packageUsages PackageUsage[]
 
+  // ✅ B1: 3 índices compostos para o modelo mais consultado do sistema
+
+  // [barbershopId, date] — índice mais importante do schema
+  // Substitui [barbershopId] simples via prefixo esquerdo
+  // Cobre: dashboard stats/charts, Finance cashflow, Finance summary,
+  //        reminder job (date range amanhã), reports com filtro de data
+  @@index([barbershopId, date])
+
+  // [barbershopId, status]
+  // Cobre queries SEM filtro de date: topServices groupBy { barbershopId, status: 'completed' },
+  // analytics conversionFunnel, reminder job { status: { in: ['scheduled', 'confirmed'] } }
+  @@index([barbershopId, status])
+
+  // [barbershopId, barberId]
+  // Cobre: reports por barbeiro, analytics barber performance,
+  //        commissions calculate (appointments por barbeiro no mês)
+  @@index([barbershopId, barberId])
+
   @@map("appointments")
 }
 
@@ -357,6 +411,9 @@ model StockItem {
   barbershop Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   movements  StockMovement[]
 
+  // ✅ B1: Índice simples [barbershopId]
+  // Cobre: GET /stock listagem, findFirst (IDOR fix), low-stock check
+  @@index([barbershopId])
   @@map("stock_items")
 }
 
@@ -374,6 +431,9 @@ model StockMovement {
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
   barber    User?     @relation("BarberStockMovements", fields: [barberId], references: [id], onDelete: SetNull)
 
+  // ✅ B1: Índice simples [stockItemId]
+  // Cobre: GET /stock/:id/movements (findMany por stockItemId)
+  @@index([stockItemId])
   @@map("stock_movements")
 }
 
@@ -405,6 +465,9 @@ model CustomerPackage {
   client     Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   usages     PackageUsage[]
 
+  // ✅ B1: Índice simples [barbershopId]
+  // Cobre: GET /packages listagem por barbearia
+  @@index([barbershopId])
   @@map("customer_packages")
 }
 
