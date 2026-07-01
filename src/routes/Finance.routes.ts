@@ -56,19 +56,28 @@ router.get('/summary', authMiddleware, async (req, res) => {
     const totalExpenses = txExpenses;
     const netProfit     = totalRevenue - totalExpenses;
 
-    // Saldo anterior (todas as transações + agendamentos antes do período)
-    const [prevTx, prevApts] = await Promise.all([
-      prisma.transaction.findMany({
-        where: { barbershopId, date: { lt: start }, status: 'completed' }
+    // ✅ B2: aggregate em vez de findMany ilimitado para calcular saldo anterior
+    // ANTES: 2 findMany sem limit carregavam TODA a história em memória
+    // DEPOIS: 3 aggregate retornam apenas 3 números ao banco
+    const [prevTxIncome, prevTxExpense, prevAptsSum] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { barbershopId, date: { lt: start }, status: 'completed', type: 'income' },
+        _sum: { amount: true }
       }),
-      prisma.appointment.findMany({
-        where: { barbershopId, status: 'completed', date: { lt: start } }
+      prisma.transaction.aggregate({
+        where: { barbershopId, date: { lt: start }, status: 'completed', type: 'expense' },
+        _sum: { amount: true }
+      }),
+      prisma.appointment.aggregate({
+        where: { barbershopId, status: 'completed', date: { lt: start } },
+        _sum: { price: true }
       })
     ]);
 
-    const previousBalance = prevTx.reduce((s, t) =>
-      s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0
-    ) + prevApts.reduce((s, a) => s + Number(a.price), 0);
+    const previousBalance =
+      Number(prevTxIncome._sum.amount  || 0) -
+      Number(prevTxExpense._sum.amount || 0) +
+      Number(prevAptsSum._sum.price    || 0);
 
     const currentBalance = previousBalance + netProfit;
 
@@ -100,9 +109,9 @@ router.get('/summary', authMiddleware, async (req, res) => {
       },
       breakdown: { expensesByCategory, revenueByCategory },
       transactions: {
-        total:   transactions.length,
-        income:  transactions.filter(t => t.type === 'income').length,
-        expense: transactions.filter(t => t.type === 'expense').length,
+        total:        transactions.length,
+        income:       transactions.filter(t => t.type === 'income').length,
+        expense:      transactions.filter(t => t.type === 'expense').length,
         appointments: appointments.length
       }
     });
@@ -118,10 +127,28 @@ router.get('/cashflow', authMiddleware, async (req, res) => {
     const barbershopId = req.user!.barbershopId!;
     const { year, months = 6 } = req.query;
 
-    const now = new Date();
+    const now          = new Date();
     const currentYear  = year ? Number(year) : now.getUTCFullYear();
     const monthsToShow = Number(months);
 
+    // ✅ B2: 2 queries paralelas em vez de loop serial de monthsToShow*2 queries
+    // ANTES: for (i < monthsToShow) → 2 queries por iteração = 12 queries seriais (padrão 6 meses)
+    // DEPOIS: 1 busca do período completo em paralelo, agrupamento em JS
+    const rangeStart = new Date(Date.UTC(currentYear, now.getUTCMonth() - monthsToShow + 1, 1));
+    const rangeEnd   = new Date(Date.UTC(currentYear, now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+
+    const [allTxs, allApts] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { barbershopId, date: { gte: rangeStart, lte: rangeEnd }, status: 'completed' },
+        select: { date: true, type: true, amount: true }
+      }),
+      prisma.appointment.findMany({
+        where: { barbershopId, status: 'completed', date: { gte: rangeStart, lte: rangeEnd } },
+        select: { date: true, price: true }
+      })
+    ]);
+
+    // Agrupar em memória por mês — lógica idêntica à anterior, sem queries no loop
     const cashflow = [];
 
     for (let i = 0; i < monthsToShow; i++) {
@@ -129,37 +156,31 @@ router.get('/cashflow', authMiddleware, async (req, res) => {
       const monthStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
       const monthEnd   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-      const [txs, apts] = await Promise.all([
-        prisma.transaction.findMany({
-          where: { barbershopId, date: { gte: monthStart, lte: monthEnd }, status: 'completed' }
-        }),
-        prisma.appointment.findMany({
-          where: { barbershopId, status: 'completed', date: { gte: monthStart, lte: monthEnd } }
-        })
-      ]);
+      const monthTxs  = allTxs.filter(t => t.date >= monthStart && t.date <= monthEnd);
+      const monthApts = allApts.filter(a => a.date >= monthStart && a.date <= monthEnd);
 
-      const txIncome   = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
-      const aptRevenue = apts.reduce((s, a) => s + Number(a.price), 0);
+      const txIncome   = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+      const aptRevenue = monthApts.reduce((s, a) => s + Number(a.price), 0);
       const revenue    = aptRevenue + txIncome;
-      const expenses   = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+      const expenses   = monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
 
       cashflow.unshift({
         month: d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'America/Sao_Paulo' }),
         monthNumber: d.getUTCMonth() + 1,
-        year: d.getUTCFullYear(),
+        year:        d.getUTCFullYear(),
         revenue,
         expenses,
-        netFlow: revenue - expenses,
-        transactionCount: txs.length + apts.length
+        netFlow:          revenue - expenses,
+        transactionCount: monthTxs.length + monthApts.length
       });
     }
 
     return res.json({
       cashflow,
       summary: {
-        totalRevenue:          cashflow.reduce((s, m) => s + m.revenue, 0),
-        totalExpenses:         cashflow.reduce((s, m) => s + m.expenses, 0),
-        averageMonthlyRevenue: cashflow.reduce((s, m) => s + m.revenue, 0) / monthsToShow,
+        totalRevenue:           cashflow.reduce((s, m) => s + m.revenue, 0),
+        totalExpenses:          cashflow.reduce((s, m) => s + m.expenses, 0),
+        averageMonthlyRevenue:  cashflow.reduce((s, m) => s + m.revenue, 0)  / monthsToShow,
         averageMonthlyExpenses: cashflow.reduce((s, m) => s + m.expenses, 0) / monthsToShow
       }
     });
@@ -221,9 +242,9 @@ router.get('/dre', authMiddleware, async (req, res) => {
     return res.json({
       period: { start, end },
       dre: {
-        revenue: { services: serviceRevenue, products: productRevenue, others: otherRevenue, total: totalRevenue },
+        revenue:  { services: serviceRevenue, products: productRevenue, others: otherRevenue, total: totalRevenue },
         expenses: { salaries: salaryExpenses, commissions: commissionExpenses, rent: rentExpenses, utilities: utilitiesExpenses, supplies: suppliesExpenses, others: otherExpenses, total: totalExpenses },
-        results: { operatingProfit: netProfit, netProfit, profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(2) : 0 }
+        results:  { operatingProfit: netProfit, netProfit, profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(2) : 0 }
       }
     });
   } catch (error) {
@@ -235,22 +256,32 @@ router.get('/dre', authMiddleware, async (req, res) => {
 // 💼 GET /api/finance/balance
 router.get('/balance', authMiddleware, async (req, res) => {
   try {
-    const barbershopId = req.user!.barbershopId!;
-    const { date } = req.query;
+    const barbershopId  = req.user!.barbershopId!;
+    const { date }      = req.query;
     const referenceDate = date ? new Date(date as string) : new Date();
 
-    const [transactions, appointments] = await Promise.all([
-      prisma.transaction.findMany({
-        where: { barbershopId, date: { lte: referenceDate }, status: 'completed' }
+    // ✅ B2: aggregate em vez de findMany ilimitado para calcular saldo total
+    // ANTES: 2 findMany sem limit carregavam TODA a história em memória
+    // DEPOIS: 3 aggregate retornam apenas 3 números ao banco
+    const [txIncome, txExpense, aptRevenue] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { barbershopId, date: { lte: referenceDate }, status: 'completed', type: 'income' },
+        _sum: { amount: true }
       }),
-      prisma.appointment.findMany({
-        where: { barbershopId, status: 'completed', date: { lte: referenceDate } }
+      prisma.transaction.aggregate({
+        where: { barbershopId, date: { lte: referenceDate }, status: 'completed', type: 'expense' },
+        _sum: { amount: true }
+      }),
+      prisma.appointment.aggregate({
+        where: { barbershopId, status: 'completed', date: { lte: referenceDate } },
+        _sum: { price: true }
       })
     ]);
 
-    const txBalance  = transactions.reduce((s, t) => s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0);
-    const aptRevenue = appointments.reduce((s, a) => s + Number(a.price), 0);
-    const cashBalance = txBalance + aptRevenue;
+    const cashBalance =
+      Number(txIncome._sum.amount  || 0) -
+      Number(txExpense._sum.amount || 0) +
+      Number(aptRevenue._sum.price || 0);
 
     const pendingCommissions = await prisma.commission.findMany({
       where: { barbershopId, status: 'pending', referenceMonth: { lte: referenceDate } }

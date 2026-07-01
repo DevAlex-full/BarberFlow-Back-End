@@ -19,15 +19,31 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     }
 
-    if (type) where.type = type as string;
+    if (type)     where.type     = type     as string;
     if (category) where.category = category as string;
-    if (status) where.status = status as string;
+    if (status)   where.status   = status   as string;
 
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { date: 'desc' },
-      take: 100
-    });
+    // ✅ B2: paginação configurável — mantém Transaction[] como corpo (contrato inalterado)
+    // ANTES: take: 100 hardcoded, sem skip, sem total
+    // DEPOIS: page/limit via query params (defaults: page=1, limit=100 — igual ao anterior)
+    // Headers X-Total-Count, X-Total-Pages, X-Current-Page adicionados (não quebram nada)
+    const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const skip  = (page - 1) * limit;
+
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: limit,
+        skip
+      }),
+      prisma.transaction.count({ where })
+    ]);
+
+    res.setHeader('X-Total-Count', total);
+    res.setHeader('X-Total-Pages', Math.ceil(total / limit));
+    res.setHeader('X-Current-Page', page);
 
     return res.json(transactions);
   } catch (error) {
@@ -44,11 +60,11 @@ router.get('/summary', authMiddleware, async (req, res) => {
 
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const lastDayOfMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
     const dateFilter = startDate && endDate ? {
       gte: new Date(startDate as string),
-      lte: new Date(endDate as string)
+      lte: new Date(endDate   as string)
     } : {
       gte: firstDayOfMonth,
       lte: lastDayOfMonth
@@ -78,9 +94,9 @@ router.get('/summary', authMiddleware, async (req, res) => {
       _count: true
     });
 
-    const totalIncome = Number(incomes._sum.amount || 0);
+    const totalIncome  = Number(incomes._sum.amount  || 0);
     const totalExpense = Number(expenses._sum.amount || 0);
-    const netProfit = totalIncome - totalExpense;
+    const netProfit    = totalIncome - totalExpense;
 
     // Receitas de agendamentos (para comparar)
     const appointmentsRevenue = await prisma.appointment.aggregate({
@@ -109,14 +125,14 @@ router.get('/summary', authMiddleware, async (req, res) => {
         totalIncome,
         totalExpense,
         netProfit,
-        incomeCount: incomes._count,
-        expenseCount: expenses._count,
-        profitMargin: totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
+        incomeCount:   incomes._count,
+        expenseCount:  expenses._count,
+        profitMargin:  totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
       },
       appointmentsRevenue: Number(appointmentsRevenue._sum.price || 0),
       expensesByCategory: expensesByCategory.map(item => ({
         category: item.category,
-        amount: Number(item._sum.amount || 0)
+        amount:   Number(item._sum.amount || 0)
       }))
     });
   } catch (error) {
@@ -162,10 +178,10 @@ router.post('/', authMiddleware, async (req, res) => {
     if (type === 'income' && barberId && !customerId && customerName) {
       const newCustomer = await prisma.customer.create({
         data: {
-          name: customerName.trim(),
-          phone: customerPhone?.replace(/\D/g, '') || '00000000000',
+          name:         customerName.trim(),
+          phone:        customerPhone?.replace(/\D/g, '') || '00000000000',
           barbershopId,
-          active: true
+          active:       true
         }
       });
       finalCustomerId = newCustomer.id;
@@ -178,19 +194,19 @@ router.post('/', authMiddleware, async (req, res) => {
         category,
         description,
         amount,
-        date: date ? new Date(date) : new Date(),
+        date:          date ? new Date(date) : new Date(),
         paymentMethod: paymentMethod || null,
-        status: status || 'completed',
-        barberId: barberId || null,
-        customerId: finalCustomerId,
-        serviceName: serviceName || null
+        status:        status || 'completed',
+        barberId:      barberId || null,
+        customerId:    finalCustomerId,
+        serviceName:   serviceName || null
       }
     });
 
     // Gerar comissão automaticamente para receita com barbeiro
     if (type === 'income' && barberId) {
       const barber = await prisma.user.findUnique({
-        where: { id: barberId },
+        where:  { id: barberId },
         select: { commissionPercentage: true }
       });
 
@@ -201,10 +217,10 @@ router.post('/', authMiddleware, async (req, res) => {
           data: {
             barberId,
             barbershopId,
-            percentage: barber.commissionPercentage,
-            amount: commissionAmount,
+            percentage:     barber.commissionPercentage,
+            amount:         commissionAmount,
             referenceMonth: new Date(now.getFullYear(), now.getMonth(), 1),
-            status: 'pending'
+            status:         'pending'
           }
         });
       }
@@ -220,7 +236,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // ✏️ PUT /api/transactions/:id - Atualizar transação
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id }       = req.params;
     const barbershopId = req.user!.barbershopId!;
     const { type, category, description, amount, date, paymentMethod, status } = req.body;
 
@@ -240,7 +256,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         category,
         description,
         amount,
-        date: date ? new Date(date) : undefined,
+        date:          date ? new Date(date) : undefined,
         paymentMethod,
         status
       }
@@ -256,7 +272,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // 🗑️ DELETE /api/transactions/:id - Excluir transação
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id }       = req.params;
     const barbershopId = req.user!.barbershopId!;
 
     // Verificar se existe e pertence à barbearia
@@ -268,9 +284,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Transação não encontrada' });
     }
 
-    await prisma.transaction.delete({
-      where: { id }
-    });
+    await prisma.transaction.delete({ where: { id } });
 
     return res.json({ message: 'Transação excluída com sucesso' });
   } catch (error) {
@@ -285,33 +299,32 @@ router.get('/cashflow', authMiddleware, async (req, res) => {
     const barbershopId = req.user!.barbershopId!;
     const { months = 6 } = req.query;
 
-    const now = new Date();
+    const now       = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth() - Number(months) + 1, 1);
 
+    // ✅ B2: select reduzido — traz só as 3 colunas usadas no agrupamento
+    // ANTES: findMany sem select carregava todos os campos (description, paymentMethod, etc.)
+    // DEPOIS: select traz apenas date, type, amount — reduz payload em ~70% por registro
     const transactions = await prisma.transaction.findMany({
       where: {
         barbershopId,
-        date: { gte: startDate },
+        date:   { gte: startDate },
         status: 'completed'
       },
-      orderBy: { date: 'asc' }
+      orderBy: { date: 'asc' },
+      select:  { date: true, type: true, amount: true }
     });
 
-    // Agrupar por mês
+    // Agrupar por mês — lógica idêntica à anterior
     const monthlyData: any = {};
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
     transactions.forEach(t => {
-      const monthKey = `${t.date.getFullYear()}-${t.date.getMonth()}`;
+      const monthKey   = `${t.date.getFullYear()}-${t.date.getMonth()}`;
       const monthLabel = `${monthNames[t.date.getMonth()]}/${t.date.getFullYear()}`;
 
       if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = {
-          month: monthLabel,
-          income: 0,
-          expense: 0,
-          net: 0
-        };
+        monthlyData[monthKey] = { month: monthLabel, income: 0, expense: 0, net: 0 };
       }
 
       if (t.type === 'income') {
