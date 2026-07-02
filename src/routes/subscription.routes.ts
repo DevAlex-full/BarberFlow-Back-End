@@ -55,19 +55,19 @@ router.get('/current', authMiddleware, async (req, res) => {
     return res.json({
       currentPlan: {
         ...currentPlan,
-        id: barbershop.plan,
+        id:     barbershop.plan,
         status: barbershop.planStatus
       },
       subscription,
       usage: {
-        barbers: barbershop._count.users,
+        barbers:   barbershop._count.users,
         customers: barbershop._count.customers
       },
       limits: currentPlan?.features || {},
       trial: {
         isInTrial,
         daysLeft: Math.max(0, trialDaysLeft),
-        endsAt: barbershop.trialEndsAt
+        endsAt:   barbershop.trialEndsAt
       }
     });
   } catch (error) {
@@ -77,11 +77,14 @@ router.get('/current', authMiddleware, async (req, res) => {
 });
 
 // ✅ CRIAR/ATUALIZAR ASSINATURA
-// ─── SEGURANÇA: planos pagos não podem ser ativados diretamente ───────────────
-// Qualquer planId classificado como pago retorna 402 imediatamente.
-// A ativação de planos pagos será feita exclusivamente via webhook Asaas
-// durante a Etapa 3 (Migração de Pagamentos).
-// Trial não exige pagamento e continua funcionando normalmente.
+// ─── SEGURANÇA: planos pagos não podem ser ativados diretamente (Bloco A) ─────
+// ─── D6: operações de escrita envolvidas em prisma.$transaction ───────────────
+// ANTES: 4 writes sequenciais independentes (updateMany + create + update + create)
+//        Se qualquer um falhasse no meio, o banco ficava em estado inconsistente:
+//        ex. assinatura anterior cancelada mas nova não criada, ou nova criada mas
+//        plano da barbearia não atualizado.
+// DEPOIS: todas as 4 operações rodam em uma única transação atômica do PostgreSQL.
+//         Ou tudo é confirmado, ou tudo é revertido — sem estado parcial.
 router.post('/subscribe', authMiddleware, async (req, res) => {
   try {
     const { planId, paymentMethod, period = 'monthly' } = req.body;
@@ -97,23 +100,19 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
     // ✅ BLOQUEIO: planos pagos não podem ser ativados via request direto
     if (PAID_PLANS.includes(planId)) {
       return res.status(402).json({
-        error: 'Para assinar um plano pago, utilize o fluxo de pagamento da plataforma.',
-        code: 'CHECKOUT_REQUIRED',
+        error:   'Para assinar um plano pago, utilize o fluxo de pagamento da plataforma.',
+        code:    'CHECKOUT_REQUIRED',
         message: 'A ativação de planos pagos é processada automaticamente após a confirmação do pagamento.'
       });
     }
 
     // A partir deste ponto, apenas planos gratuitos/trial passam
-    const plan = PLANS[planId as keyof typeof PLANS];
+    const plan         = PLANS[planId as keyof typeof PLANS];
     const barbershopId = req.user!.barbershopId!;
 
     const barbershop = await prisma.barbershop.findUnique({
-      where: { id: barbershopId },
-      include: {
-        _count: {
-          select: { users: true, customers: true }
-        }
-      }
+      where:   { id: barbershopId },
+      include: { _count: { select: { users: true, customers: true } } }
     });
 
     if (!barbershop) {
@@ -131,14 +130,9 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: validation.reason });
     }
 
-    // Cancelar assinatura anterior se existir
-    await prisma.subscription.updateMany({
-      where: { barbershopId, status: 'active' },
-      data: { status: 'cancelled', cancelledAt: new Date() }
-    });
-
+    // ─── Calcular datas do período ─────────────────────────────────────────────
     const currentPeriodStart = new Date();
-    const currentPeriodEnd = new Date();
+    const currentPeriodEnd   = new Date();
 
     if (period === 'monthly') {
       currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
@@ -148,51 +142,65 @@ router.post('/subscribe', authMiddleware, async (req, res) => {
       currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
     }
 
-    const amount = plan.price;
-
-    const subscription = await prisma.subscription.create({
-      data: {
-        barbershopId,
-        plan: planId,
-        status: 'active',
-        amount,
-        paymentMethod: paymentMethod || 'free',
-        currentPeriodStart,
-        currentPeriodEnd
-      }
-    });
-
+    const amount       = plan.price;
     const maxBarbers   = plan.features.maxBarbers   === -1 ? 999    : plan.features.maxBarbers;
     const maxCustomers = plan.features.maxCustomers === -1 ? 999999 : plan.features.maxCustomers;
 
-    await prisma.barbershop.update({
-      where: { id: barbershopId },
-      data: {
-        plan: planId,
-        planStatus: 'active',
-        planStartedAt: new Date(),
-        planExpiresAt: currentPeriodEnd,
-        maxBarbers,
-        maxCustomers
-      }
-    });
+    // ✅ D6: transação atômica — as 4 operações são confirmadas juntas ou revertidas juntas
+    const subscription = await prisma.$transaction(async (tx) => {
 
-    await prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount,
-        status: 'pending',
-        paymentMethod: paymentMethod || 'free'
-      }
+      // 1. Cancelar assinatura anterior (se existir)
+      await tx.subscription.updateMany({
+        where: { barbershopId, status: 'active' },
+        data:  { status: 'cancelled', cancelledAt: new Date() }
+      });
+
+      // 2. Criar nova assinatura
+      const newSubscription = await tx.subscription.create({
+        data: {
+          barbershopId,
+          plan:               planId,
+          status:             'active',
+          amount,
+          paymentMethod:      paymentMethod || 'free',
+          currentPeriodStart,
+          currentPeriodEnd
+        }
+      });
+
+      // 3. Atualizar limites e status da barbearia
+      await tx.barbershop.update({
+        where: { id: barbershopId },
+        data: {
+          plan:         planId,
+          planStatus:   'active',
+          planStartedAt: new Date(),
+          planExpiresAt: currentPeriodEnd,
+          maxBarbers,
+          maxCustomers
+        }
+      });
+
+      // 4. Registrar pagamento vinculado à assinatura recém-criada
+      await tx.payment.create({
+        data: {
+          subscriptionId: newSubscription.id,
+          amount,
+          status:        'pending',
+          paymentMethod: paymentMethod || 'free'
+        }
+      });
+
+      return newSubscription;
     });
 
     return res.status(201).json({
-      message: 'Assinatura criada com sucesso!',
+      message:      'Assinatura criada com sucesso!',
       subscription,
       plan: {
-        id: planId,
-        name: plan.name,
-        price: plan.price,
+        id:     planId,
+        name:   plan.name,
+        price:  plan.price,
         period,
         amount
       }
@@ -210,7 +218,7 @@ router.post('/cancel', authMiddleware, async (req, res) => {
 
     const cancelledSubscriptions = await prisma.subscription.updateMany({
       where: { barbershopId, status: 'active' },
-      data: { status: 'cancelled', cancelledAt: new Date() }
+      data:  { status: 'cancelled', cancelledAt: new Date() }
     });
 
     if (cancelledSubscriptions.count === 0) {
@@ -219,7 +227,7 @@ router.post('/cancel', authMiddleware, async (req, res) => {
 
     await prisma.barbershop.update({
       where: { id: barbershopId },
-      data: { planStatus: 'cancelled' }
+      data:  { planStatus: 'cancelled' }
     });
 
     return res.json({
@@ -235,15 +243,11 @@ router.post('/cancel', authMiddleware, async (req, res) => {
 router.post('/validate-change', authMiddleware, async (req, res) => {
   try {
     const { targetPlan } = req.body;
-    const barbershopId = req.user!.barbershopId!;
+    const barbershopId   = req.user!.barbershopId!;
 
     const barbershop = await prisma.barbershop.findUnique({
-      where: { id: barbershopId },
-      include: {
-        _count: {
-          select: { users: true, customers: true }
-        }
-      }
+      where:   { id: barbershopId },
+      include: { _count: { select: { users: true, customers: true } } }
     });
 
     if (!barbershop) {
@@ -259,9 +263,9 @@ router.post('/validate-change', authMiddleware, async (req, res) => {
 
     return res.json({
       canChange: validation.canChange,
-      reason: validation.reason,
+      reason:    validation.reason,
       currentUsage: {
-        barbers: barbershop._count.users,
+        barbers:   barbershop._count.users,
         customers: barbershop._count.customers
       },
       targetLimits: PLANS[targetPlan as keyof typeof PLANS]?.features
