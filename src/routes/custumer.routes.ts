@@ -6,23 +6,44 @@ import { checkPlanActive, checkCustomerLimit } from '../middlewares/plan.middlew
 const router = Router();
 
 // Listar clientes
+// ✅ B5: Paginação opcional via ?page= e ?limit=
+// Sem params → retorna todos os registros (comportamento idêntico ao anterior)
+// Com params → retorna a fatia solicitada
+// Headers adicionados em ambos os casos (não breaking):
+//   X-Total-Count, X-Total-Pages, X-Current-Page
 router.get('/', authMiddleware, checkPlanActive, async (req, res) => {
   try {
     const { search } = req.query;
-    const where: any = { barbershopId: req.user!.barbershopId! };
+    const barbershopId = req.user!.barbershopId!;
+
+    const where: any = { barbershopId };
     if (search) {
       where.name = { contains: search as string, mode: 'insensitive' };
     }
 
-    const customers = await prisma.customer.findMany({
-      where,
-      include: {
-        _count: {
-          select: { appointments: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    // ✅ Paginação ativa apenas quando params são fornecidos explicitamente
+    const paginate  = req.query.page !== undefined || req.query.limit !== undefined;
+    const page      = paginate ? Math.max(1, parseInt(req.query.page  as string) || 1)  : 1;
+    const limit     = paginate ? Math.min(parseInt(req.query.limit as string) || 50, 500) : undefined;
+    const skip      = paginate && limit ? (page - 1) * limit : undefined;
+
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        include: {
+          _count: {
+            select: { appointments: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        ...(paginate && limit !== undefined ? { take: limit, skip } : {})
+      }),
+      prisma.customer.count({ where })
+    ]);
+
+    res.setHeader('X-Total-Count',  total);
+    res.setHeader('X-Total-Pages',  paginate && limit ? Math.ceil(total / limit) : 1);
+    res.setHeader('X-Current-Page', page);
 
     return res.json(customers);
   } catch (error) {

@@ -6,6 +6,13 @@ import { createTransactionFromAppointment, cancelTransactionFromAppointment } fr
 const router = Router();
 
 // Listar agendamentos
+// ✅ B5: Paginação opcional via ?page= e ?limit=
+// Sem params → retorna todos os registros (comportamento idêntico ao anterior)
+// Com params → retorna a fatia solicitada
+// Nota: o filtro ?date= já limita naturalmente o volume (1 dia = dezenas de registros).
+// A paginação aqui é proteção extra para consultas sem filtro de data.
+// Headers adicionados em ambos os casos (não breaking):
+//   X-Total-Count, X-Total-Pages, X-Current-Page
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { date, status } = req.query;
@@ -29,16 +36,30 @@ router.get('/', authMiddleware, async (req, res) => {
       where.status = status;
     }
 
-    const appointments = await prisma.appointment.findMany({
-      where,
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        client: { select: { id: true, name: true, phone: true } },
-        barber: { select: { id: true, name: true } },
-        service: { select: { id: true, name: true, price: true, duration: true } }
-      },
-      orderBy: { date: 'asc' }
-    });
+    // ✅ Paginação ativa apenas quando params são fornecidos explicitamente
+    const paginate = req.query.page !== undefined || req.query.limit !== undefined;
+    const page     = paginate ? Math.max(1, parseInt(req.query.page  as string) || 1)   : 1;
+    const limit    = paginate ? Math.min(parseInt(req.query.limit as string) || 50, 500) : undefined;
+    const skip     = paginate && limit ? (page - 1) * limit : undefined;
+
+    const [appointments, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          client:   { select: { id: true, name: true, phone: true } },
+          barber:   { select: { id: true, name: true } },
+          service:  { select: { id: true, name: true, price: true, duration: true } }
+        },
+        orderBy: { date: 'asc' },
+        ...(paginate && limit !== undefined ? { take: limit, skip } : {})
+      }),
+      prisma.appointment.count({ where })
+    ]);
+
+    res.setHeader('X-Total-Count',  total);
+    res.setHeader('X-Total-Pages',  paginate && limit ? Math.ceil(total / limit) : 1);
+    res.setHeader('X-Current-Page', page);
 
     return res.json(appointments);
   } catch (error) {
